@@ -44,6 +44,7 @@ include_directories(
 set(ALL_LIBS
 	${OPENGL_LIBRARY}
 	gdm::deps
+	gdm::glutil
 )
 
 
@@ -516,6 +517,13 @@ add_executable(playground
 	playground/playground.cpp
 	common/shader.cpp
 	common/shader.hpp
+	common/texture.cpp
+	common/texture.hpp
+	common/objloader.cpp
+	common/objloader.hpp
+
+	playground/TransformVertexShader.vertexshader
+	playground/ColorFragmentShader.fragmentshader
 )
 target_link_libraries(playground
 	${ALL_LIBS}
