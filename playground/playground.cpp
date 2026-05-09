@@ -693,7 +693,7 @@ static int glinit()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // Open a window and create its OpenGL context
-    window = glfwCreateWindow(1024, 768, u8"12211723 È«¼º¹Î - ±¼»è±â ½Ã¹Ä·¹ÀÌÅÍ", NULL, NULL);
+    window = glfwCreateWindow(1024, 768, u8"Test - ±¼»è±â ½Ã¹Ä·¹ÀÌÅÍ", NULL, NULL);
     if (window == NULL)
     {
         fprintf(stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n");
