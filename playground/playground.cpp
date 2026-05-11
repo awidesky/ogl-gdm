@@ -56,17 +56,22 @@ static glm::mat4 View;
 // 원래 torus.obj 모델은 너무 크므로, 1/10으로 줄여 쓴다
 const float TORUS_BASE_SCALE = 0.1f;
 
+// opengl error를 하나 만들까?
+float g_makeError = false, g_makeErrorPressedLastFrame = false;
+
 /*
 * 모델(obj파일)을 나타내는 객체.
 * obj파일에서 읽어온 버텍스 값과 gl buffer를 저장한다.
 */
 struct modelData {
     std::vector<glm::vec3> vertices;
-    GLuint vertexbuffer, uvbuffer, normalbuffer;
+    GLuint vao, vertexbuffer, uvbuffer, normalbuffer;
     modelData(const char * path) {
         std::vector<glm::vec2> uvs;
         std::vector<glm::vec3> normals;
         loadOBJ(path, vertices, uvs, normals);
+
+        // VBO 생성
         glGenBuffers(1, &vertexbuffer);
         glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), &vertices[0], GL_STATIC_DRAW);
@@ -79,11 +84,45 @@ struct modelData {
         glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
         glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3), &normals[0], GL_STATIC_DRAW);
 
+        // VAO 생성
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        // vertices
+        glEnableVertexAttribArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+        glVertexAttribPointer(
+            0,          // attribute. No particular reason for 0, but must match the layout in the shader.
+            3,          // size
+            GL_FLOAT, // type
+            GL_FALSE, // normalized?
+            0,          // stride
+            (void*)0 // array buffer offset
+        );
+
+        // uv
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+        // normal
+        glEnableVertexAttribArray(2);
+        glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+        glVertexAttribPointer(
+            2,              // layout(location = 2)
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            0,
+            (void*)0
+        );
+        glBindVertexArray(0);
     }
     ~modelData() {
         glDeleteBuffers(1, &vertexbuffer);
         glDeleteBuffers(1, &uvbuffer);
         glDeleteBuffers(1, &normalbuffer);
+        glDeleteVertexArrays(1, &vao);
     }
 };
 
@@ -139,43 +178,11 @@ struct object {
         glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(TextureUniformID, 0);
 
-        // 1rst attribute buffer : vertices
-        glEnableVertexAttribArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, model.vertexbuffer);
-        glVertexAttribPointer(
-            0,          // attribute. No particular reason for 0, but must match the layout in the shader.
-            3,          // size
-            GL_FLOAT, // type
-            GL_FALSE, // normalized?
-            0,          // stride
-            (void *)0 // array buffer offset
-        );
-        
-        // uv
-        glEnableVertexAttribArray(1);
-        glBindBuffer(GL_ARRAY_BUFFER, model.uvbuffer);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
-        // normal
-        glEnableVertexAttribArray(2);
-        glBindBuffer(GL_ARRAY_BUFFER, model.normalbuffer);
-        glVertexAttribPointer(
-            2,              // layout(location = 2)
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            0,
-            (void*)0
-        );
-
 
         // Draw the model !
+        glBindVertexArray(model.vao);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)model.vertices.size());
-        
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
-        glDisableVertexAttribArray(2);
-
+        glBindVertexArray(0);
     }
 };
 
@@ -208,11 +215,6 @@ void start()
     modelData cube{ "models/cube.obj" };
     modelData plane{ "models/plane.obj" };
     modelData torus{ "models/torus.obj" };
-
-    // VAO
-    GLuint VertexArrayID;
-    glGenVertexArrays(1, &VertexArrayID);
-    glBindVertexArray(VertexArrayID);
 
     // Create and compile our GLSL program from the shaders
     GLuint programID = LoadShaders("TransformVertexShader.vertexshader", "ColorFragmentShader.fragmentshader");
@@ -285,7 +287,7 @@ void start()
     // 사실상 같은 물체를 구성하므로, 텍스쳐를 같이 쓴다.
     bucket.texture = bucketBackPlane.texture = scoopTexture;
 
-    glBindTexture(9999, 9999);
+    //glBindTexture(9999, 9999);
 
     // ---------------렌더링 루프---------------//
     do
@@ -452,6 +454,14 @@ void start()
         arm1.draw(); arm2.draw(); arm3.draw();
         bucket.draw(); bucketBackPlane.draw();
 
+
+        if (g_makeError) {
+            glBindVertexArray(track->model.vao);
+            glUniform3fv(99999999, 1, &lightPos[0]);
+            glBindVertexArray(0);
+            g_makeError = false;
+        }
+
         // Swap buffers
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -462,7 +472,6 @@ void start()
 
     // Cleanup VBO and shader
     glDeleteProgram(programID);
-    glDeleteVertexArrays(1, &VertexArrayID);
 
     // model객체의 소멸자가 호출되어, vertexbuffer, uvbuffer, normalbuffer도 삭제된다.
     // (start와 main을 분리한 이유)
@@ -643,6 +652,14 @@ static void computeKeyboardTranslates(glm::mat4& view, glm::vec3& tractorPositio
 
         view *= glm::translate(glm::mat4(1.0f), translateFactor);
     }
+
+    // v키를 누르면 에러 생성
+    if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS && !g_makeErrorPressedLastFrame) {
+        g_makeError = true;  // 한 번만 true로 변경
+        g_makeErrorPressedLastFrame = true;
+    }
+    else g_makeErrorPressedLastFrame = false;
+
     // For the next frame, the "last time" will be "now"
     lastTime = currentTime;
 }
