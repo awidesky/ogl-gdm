@@ -456,7 +456,7 @@ void start()
 
 
         if (g_makeError) {
-            glBindVertexArray(track->model.vao);
+            glBindVertexArray(cabin.model.vao);
             glUniform3fv(99999999, 1, &lightPos[0]);
             glBindVertexArray(0);
             g_makeError = false;
@@ -657,8 +657,9 @@ static void computeKeyboardTranslates(glm::mat4& view, glm::vec3& tractorPositio
     if (glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS && !g_makeErrorPressedLastFrame) {
         g_makeError = true;  // 한 번만 true로 변경
         g_makeErrorPressedLastFrame = true;
+    } else if (glfwGetKey(window, GLFW_KEY_V) == GLFW_RELEASE) {
+        g_makeErrorPressedLastFrame = false;
     }
-    else g_makeErrorPressedLastFrame = false;
 
     // For the next frame, the "last time" will be "now"
     lastTime = currentTime;
@@ -710,7 +711,7 @@ static int glinit()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // Open a window and create its OpenGL context
-    window = glfwCreateWindow(1024, 768, u8"Test - 굴삭기 시뮬레이터", NULL, NULL);
+    window = glfwCreateWindow(1024, 768, u8"Test - Poclain", NULL, NULL);
     if (window == NULL)
     {
         fprintf(stderr, "Failed to open GLFW window. If you have an Intel GPU, they are not 3.3 compatible. Try the 2.1 version of the tutorials.\n");
