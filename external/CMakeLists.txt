@@ -29,7 +29,7 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 FetchContent_Declare(
 	gdm
 	GIT_REPOSITORY https://github.com/awidesky/gdm.git
-	GIT_TAG        debug
+	GIT_TAG        master
 	GIT_SHALLOW    TRUE
 	SOURCE_DIR     ${CMAKE_SOURCE_DIR}/external/gdm
 	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
