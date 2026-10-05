@@ -22,6 +22,7 @@ set(GDM_USE_GLM ON CACHE BOOL "")
 set(GDM_GLFW_VERSION "3.4.0" CACHE STRING "GLFW version")
 set(GDM_GLEW_VERSION "2.3.1" CACHE STRING "GLEW version")
 set(GDM_GLM_VERSION "1.0.3" CACHE STRING "GLM version")
+set(AGL_LIBRARY "" CACHE FILEPATH "Disable AGL, deprecated Apple graphics framework." FORCE)
 
 # TODO : use file(DOWNLOAD)
 include(FetchContent)
