@@ -607,6 +607,8 @@ set_target_properties(misc05_picking_BulletPhysics PROPERTIES XCODE_ATTRIBUTE_CO
 create_target_launcher(misc05_picking_BulletPhysics WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/misc05_picking/")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	message(STATUS "Excluding [tutorial17_rotations, misc05_picking_slow_easy, misc05_picking_custom, misc05_picking_BulletPhysics]")
+	message(STATUS "from ALL_BUILD on MacOS; they depend on the bundled AntTweakBar 1.16, which does not build on macOS.")
 	set_target_properties(tutorial17_rotations misc05_picking_slow_easy misc05_picking_custom misc05_picking_BulletPhysics
 		PROPERTIES EXCLUDE_FROM_ALL 1 EXCLUDE_FROM_DEFAULT_BUILD 1)
 else()
