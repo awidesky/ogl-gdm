@@ -26,7 +26,7 @@ set(AGL_LIBRARY "" CACHE FILEPATH "Disable AGL, deprecated Apple graphics framew
 
 # TODO : use file(DOWNLOAD)
 include(FetchContent)
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+set(FETCHCONTENT_UPDATES_DISCONNECTED OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
 	gdm
 	GIT_REPOSITORY https://github.com/awidesky/gdm.git
