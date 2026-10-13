@@ -31,47 +31,51 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
 # Keep gdm in sync with upstream master at configure time
 # The fetch is quiet; the worktree is hard-reset only when behind origin/master,
 # which also wipes any unintended local edits in external/gdm.
-find_package(Git QUIET)
 set(GDM_SRC_DIR "${CMAKE_SOURCE_DIR}/external/gdm")
-if(Git_FOUND AND EXISTS "${GDM_SRC_DIR}/.git")
-	execute_process(
-		COMMAND "${GIT_EXECUTABLE}" fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
-		WORKING_DIRECTORY "${GDM_SRC_DIR}"
-		ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
-		RESULT_VARIABLE _gdm_fetch_result
-		ERROR_VARIABLE _gdm_fetch_err
-		ERROR_STRIP_TRAILING_WHITESPACE
-	)
-	if(NOT _gdm_fetch_result EQUAL 0)
-		message(WARNING "GDM: fetch from origin failed (${_gdm_fetch_err}); using existing checkout.")
+if(EXISTS "${GDM_SRC_DIR}/.git")
+	find_package(Git QUIET)
+	if(NOT Git_FOUND)
+		message(WARNING "GDM: Git not found in system; GDM may be outdated")
 	else()
 		execute_process(
-			COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD origin/master
+			COMMAND "${GIT_EXECUTABLE}" fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
 			WORKING_DIRECTORY "${GDM_SRC_DIR}"
-			RESULT_VARIABLE _gdm_rev_result
-			OUTPUT_VARIABLE _gdm_rev_out
-			OUTPUT_STRIP_TRAILING_WHITESPACE
+			ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
+			RESULT_VARIABLE _gdm_fetch_result
+			ERROR_VARIABLE _gdm_fetch_err
+			ERROR_STRIP_TRAILING_WHITESPACE
 		)
-		if(NOT _gdm_rev_result EQUAL 0)
-			message(WARNING "GDM: cannot compare HEAD with origin/master; using existing checkout.")
+		if(NOT _gdm_fetch_result EQUAL 0)
+			message(WARNING "GDM: fetch from origin failed (${_gdm_fetch_err}); using existing checkout")
 		else()
-			string(REPLACE "\n" ";" _gdm_rev "${_gdm_rev_out}")
-			list(GET _gdm_rev 0 _gdm_head_sha)
-			list(GET _gdm_rev 1 _gdm_upstream_sha)
-			string(SUBSTRING "${_gdm_head_sha}" 0 7 _gdm_head_short)
-			string(SUBSTRING "${_gdm_upstream_sha}" 0 7 _gdm_upstream_short)
-			if(_gdm_head_sha STREQUAL _gdm_upstream_sha)
-				message(STATUS "GDM is up to date (${_gdm_head_short})")
+			execute_process(
+				COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD origin/master
+				WORKING_DIRECTORY "${GDM_SRC_DIR}"
+				RESULT_VARIABLE _gdm_rev_result
+				OUTPUT_VARIABLE _gdm_rev_out
+				OUTPUT_STRIP_TRAILING_WHITESPACE
+			)
+			if(NOT _gdm_rev_result EQUAL 0)
+				message(WARNING "GDM: cannot compare HEAD with origin/master; using existing checkout")
 			else()
-				message(STATUS "GDM: update ${_gdm_head_short} -> ${_gdm_upstream_short}")
-				execute_process(
-					COMMAND "${GIT_EXECUTABLE}" reset --hard origin/master
-					WORKING_DIRECTORY "${GDM_SRC_DIR}"
-					ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
-					RESULT_VARIABLE _gdm_reset_result
-				)
-				if(NOT _gdm_reset_result EQUAL 0)
-					message(WARNING "GDM: reset --hard failed; keeping existing checkout.")
+				string(REPLACE "\n" ";" _gdm_rev "${_gdm_rev_out}")
+				list(GET _gdm_rev 0 _gdm_head_sha)
+				list(GET _gdm_rev 1 _gdm_upstream_sha)
+				string(SUBSTRING "${_gdm_head_sha}" 0 7 _gdm_head_short)
+				string(SUBSTRING "${_gdm_upstream_sha}" 0 7 _gdm_upstream_short)
+				if(_gdm_head_sha STREQUAL _gdm_upstream_sha)
+					message(STATUS "GDM is up to date (${_gdm_head_short})")
+				else()
+					message(STATUS "GDM: update ${_gdm_head_short} -> ${_gdm_upstream_short}")
+					execute_process(
+						COMMAND "${GIT_EXECUTABLE}" reset --hard origin/master
+						WORKING_DIRECTORY "${GDM_SRC_DIR}"
+						ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
+						RESULT_VARIABLE _gdm_reset_result
+					)
+					if(NOT _gdm_reset_result EQUAL 0)
+						message(WARNING "GDM: reset --hard failed; keeping existing checkout")
+					endif()
 				endif()
 			endif()
 		endif()
