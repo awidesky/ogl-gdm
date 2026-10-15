@@ -24,73 +24,18 @@ set(GDM_GLEW_VERSION "2.3.1" CACHE STRING "GLEW version")
 set(GDM_GLM_VERSION "1.0.3" CACHE STRING "GLM version")
 set(AGL_LIBRARY "" CACHE FILEPATH "Disable AGL, deprecated Apple graphics framework." FORCE)
 
-# TODO : use file(DOWNLOAD)
-include(FetchContent)
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "" FORCE)
-
-# Keep gdm in sync with upstream master at configure time
-# The fetch is quiet; the worktree is hard-reset only when behind origin/master,
-# which also wipes any unintended local edits in external/gdm.
+### GDM ###
+# external/gdm is not a git checkout: FetchGDM() (FetchGDM.cmake) keeps a
+# copy of the gdm sources here, tracking the head commit of GDM_TAG; see the
+# header comment there for the resolve/download/verify/install pipeline.
 set(GDM_SRC_DIR "${CMAKE_SOURCE_DIR}/external/gdm")
-if(EXISTS "${GDM_SRC_DIR}/.git")
-	find_package(Git QUIET)
-	if(NOT Git_FOUND)
-		message(WARNING "GDM: Git not found in system; GDM may be outdated")
-	else()
-		execute_process(
-			COMMAND "${GIT_EXECUTABLE}" fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
-			WORKING_DIRECTORY "${GDM_SRC_DIR}"
-			ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
-			RESULT_VARIABLE _gdm_fetch_result
-			ERROR_VARIABLE _gdm_fetch_err
-			ERROR_STRIP_TRAILING_WHITESPACE
-		)
-		if(NOT _gdm_fetch_result EQUAL 0)
-			message(WARNING "GDM: fetch from origin failed (${_gdm_fetch_err}); using existing checkout")
-		else()
-			execute_process(
-				COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD origin/master
-				WORKING_DIRECTORY "${GDM_SRC_DIR}"
-				RESULT_VARIABLE _gdm_rev_result
-				OUTPUT_VARIABLE _gdm_rev_out
-				OUTPUT_STRIP_TRAILING_WHITESPACE
-			)
-			if(NOT _gdm_rev_result EQUAL 0)
-				message(WARNING "GDM: cannot compare HEAD with origin/master; using existing checkout")
-			else()
-				string(REPLACE "\n" ";" _gdm_rev "${_gdm_rev_out}")
-				list(GET _gdm_rev 0 _gdm_head_sha)
-				list(GET _gdm_rev 1 _gdm_upstream_sha)
-				string(SUBSTRING "${_gdm_head_sha}" 0 7 _gdm_head_short)
-				string(SUBSTRING "${_gdm_upstream_sha}" 0 7 _gdm_upstream_short)
-				if(_gdm_head_sha STREQUAL _gdm_upstream_sha)
-					message(STATUS "GDM is up to date (${_gdm_head_short})")
-				else()
-					message(STATUS "GDM: update ${_gdm_head_short} -> ${_gdm_upstream_short}")
-					execute_process(
-						COMMAND "${GIT_EXECUTABLE}" reset --hard origin/master
-						WORKING_DIRECTORY "${GDM_SRC_DIR}"
-						ENVIRONMENT "GIT_TERMINAL_PROMPT=0"
-						RESULT_VARIABLE _gdm_reset_result
-					)
-					if(NOT _gdm_reset_result EQUAL 0)
-						message(WARNING "GDM: reset --hard failed; keeping existing checkout")
-					endif()
-				endif()
-			endif()
-		endif()
-	endif()
-endif()
+set(GDM_TAG "master" CACHE STRING "GDM's version; branch, tag, or commit hash")
+include("${CMAKE_CURRENT_LIST_DIR}/FetchGDM.cmake")
+FetchGDM("${GDM_SRC_DIR}" "${GDM_TAG}")
 
-FetchContent_Declare(
-	gdm
-	GIT_REPOSITORY https://github.com/awidesky/gdm.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE
-	SOURCE_DIR     ${GDM_SRC_DIR}
-	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(gdm)
+# gdm always lives at ${GDM_SRC_DIR} (a subdirectory of this source tree), so
+# the one-arg form is valid; binary dir defaults to <build>/external/gdm.
+add_subdirectory("${GDM_SRC_DIR}")
 set(OPENGL_LIBRARY
 	${OPENGL_LIBRARY}
 	gdm::window # original script only add glfw, I don't know if ANTTWEAKBAR really need it, but..
