@@ -42,33 +42,69 @@ function(FetchGDM source_dir tag)
 	### resolve: <tag> -> head commit
 
 	set(ref "")
-	message(STATUS "GDM: checking upstream '${tag}'")
+	string(TIMESTAMP today "%Y-%m-%d")
 	# per-tag cache file in gdm's download dir, keyed like its archives
 	string(REGEX REPLACE "[^A-Za-z0-9._-]" "_" tag_safe "${tag}")
 	set(feed_file "${CMAKE_BINARY_DIR}/_gdm_downloads/gdm-${tag_safe}.atom")
 	file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/_gdm_downloads")
-	file(DOWNLOAD
-		"https://github.com/awidesky/gdm/commits/${tag}.atom"
-		"${feed_file}"
-		TIMEOUT 10 # a dead connection must not hang the configure
-		TLS_VERIFY ON
-		STATUS dl
-	)
-	list(GET dl 0 code)
-	set(fetch_err "")
-	if(code EQUAL 0)
-		# feed downloaded: scrape the head commit out of it. A failed match
-		# (feed format changed) leaves ref empty, which the compare stage
-		# treats exactly like a network failure.
-		file(READ "${feed_file}" feed)
-		string(REGEX MATCH "gdm/commit/([0-9a-f]+)" m "${feed}")
-		set(ref "${CMAKE_MATCH_1}")
-		if(ref STREQUAL "")
-			set(fetch_err "could not parse the commit Atom feed")
+	# to avoid fetching network every re-configuration,
+	# we track the result of the first operation of the day.
+	# if today's first run successfully checked the remote, skip the checking;
+	# no more checks will happen for the rest of the day,
+	# re-configuring succeeds without network connection.
+	# (to force checking for update, use the -UGDM_LAST_CHECK option)
+	# 
+	# if today's first run failed to fetch the remote,
+	# it depends on whether there's a working installation (external/gdm)
+	# if so, skip the checking for today; don't bother the user with warnings,
+	# just use what we have for now.
+	# (to force checking for update, use the -UGDM_LAST_CHECK option)
+	# if external/gdm does not exist, it keeps retrying to fetch the gdm.
+	# if the fetch fails, configuration fails.
+	set(check_skipped FALSE)
+	if(EXISTS "${source_dir}/CMakeLists.txt" AND GDM_LAST_CHECK MATCHES "^${today};${tag_safe};(.+)$")
+		if(CMAKE_MATCH_1 STREQUAL "FAILED")
+			set(fetch_err "upstream check failed earlier today")
+			set(check_skipped TRUE)
+		else()
+			set(ref "${CMAKE_MATCH_1}")
+			message(STATUS "GDM: upstream check skipped today(-UGDM_LAST_CHECK to reset)")
 		endif()
-	else()
-		list(GET dl 1 fetch_err)
-		string(REGEX REPLACE "^\"|\"$" "" fetch_err "${fetch_err}") # STATUS quotes the message
+	endif()
+	if(ref STREQUAL "" AND NOT check_skipped)
+		message(STATUS "GDM: checking upstream '${tag}'")
+		file(DOWNLOAD
+			"https://github.com/awidesky/gdm/commits/${tag}.atom"
+			"${feed_file}"
+			TIMEOUT 15 # a dead connection must not hang the configure
+			TLS_VERIFY ON
+			STATUS dl
+		)
+		list(GET dl 0 code)
+		set(fetch_err "")
+		if(code EQUAL 0)
+			# feed downloaded: scrape the head commit out of it. A failed match
+			# (feed format changed) leaves ref empty, which the compare stage
+			# treats exactly like a network failure.
+			file(READ "${feed_file}" feed)
+			string(REGEX MATCH "gdm/commit/([0-9a-f]+)" m "${feed}")
+			set(ref "${CMAKE_MATCH_1}")
+			if(ref STREQUAL "")
+				set(fetch_err "could not parse the commit Atom feed")
+			endif()
+		else()
+			list(GET dl 1 fetch_err)
+			string(REGEX REPLACE "^\"|\"$" "" fetch_err "${fetch_err}") # STATUS quotes the message
+		endif()
+		# record today's result so later configures skip the network
+		if(ref STREQUAL "")
+			set(_check_val "FAILED")
+		else()
+			set(_check_val "${ref}")
+		endif()
+		set(GDM_LAST_CHECK "${today};${tag_safe};${_check_val}" CACHE STRING
+			"Last upstream check (date;tag;head-sha or FAILED); -U GDM_LAST_CHECK forces a re-check" FORCE)
+		unset(_check_val)
 	endif()
 	string(SUBSTRING "${ref}" 0 7 ref_short) # short hash, for messages only
 
@@ -78,10 +114,15 @@ function(FetchGDM source_dir tag)
 	if(ref STREQUAL "") # offline / timeout / feed format changed
 		if(EXISTS "${source_dir}/CMakeLists.txt")
 			set(need_fetch FALSE) # degrade: keep building against the old copy
-			message(WARNING "GDM: cannot fetch '${tag}' (${fetch_err}); using existing checkout")
+			if(check_skipped)
+				message(STATUS "GDM: upstream check failed earlier today; using existing checkout(-UGDM_LAST_CHECK to retry)")
+			else()
+				message(WARNING "GDM: cannot fetch '${tag}' (${fetch_err}); using existing checkout")
+			endif()
 		else()
 			# nothing to build against, and no way to get it
-			message(FATAL_ERROR "GDM: cannot fetch '${tag}' (${fetch_err}), and no gdm sources in ${source_dir}")
+			message(FATAL_ERROR "GDM: cannot fetch '${tag}' (${fetch_err}), and no gdm sources in ${source_dir}\n"
+								"Please retry after internet connection to download necessary dependencies.")
 		endif()
 	elseif(EXISTS "${source_dir}/GDM_COMMIT" AND EXISTS "${source_dir}/CMakeLists.txt")
 		file(READ "${source_dir}/GDM_COMMIT" have)
@@ -184,7 +225,8 @@ function(FetchGDM source_dir tag)
 		if(EXISTS "${source_dir}/CMakeLists.txt")
 			message(WARNING "GDM: could not fetch ${ref_short}${err_note}; using existing checkout")
 		else()
-			message(FATAL_ERROR "GDM: could not fetch gdm${err_note}, and no gdm sources in ${source_dir}")
+			message(FATAL_ERROR "GDM: could not fetch gdm${err_note}, and no gdm sources in ${source_dir}\n"
+								"Please retry after internet connection to download necessary dependencies.")
 		endif()
 	endif()
 
