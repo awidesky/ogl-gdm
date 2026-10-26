@@ -77,7 +77,6 @@ function(FetchGDM source_dir tag)
 			"https://github.com/awidesky/gdm/commits/${tag}.atom"
 			"${feed_file}"
 			TIMEOUT 15 # a dead connection must not hang the configure
-			TLS_VERIFY ON
 			STATUS dl
 		)
 		list(GET dl 0 code)
@@ -145,7 +144,7 @@ function(FetchGDM source_dir tag)
 		# downloaded archive stays, overwritten on the next fetch.
 		set(archive "${CMAKE_BINARY_DIR}/_gdm_downloads/gdm.tar.gz")
 		message(STATUS "GDM: downloading ${url}")
-		file(DOWNLOAD "${url}" "${archive}" TLS_VERIFY ON TIMEOUT 300 INACTIVITY_TIMEOUT 30 STATUS dl)
+		file(DOWNLOAD "${url}" "${archive}" TIMEOUT 300 INACTIVITY_TIMEOUT 30 STATUS dl)
 		list(GET dl 0 code)
 		if(NOT code EQUAL 0)
 			list(GET dl 1 fetch_err)
