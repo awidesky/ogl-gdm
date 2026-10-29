@@ -21,6 +21,10 @@ using namespace glm;
 
 // Include AntTweakBar
 #include <AntTweakBar.h>
+// Use common/glfw_anttweakbar.hpp instead of registering TwEvent*GLFW callbacks by hand:
+// it installs GLFW3-compatible event trampolines for AntTweakBar, initializes the bar
+// size from the framebuffer (HiDPI-aware), and offers the ATBMouseOverBar() helper.
+#include <common/glfw_anttweakbar.hpp>
 
 #include <common/shader.hpp>
 #include <common/texture.hpp>
@@ -64,8 +68,11 @@ int main( void )
 	}
 
 	// Initialize the GUI
-	TwInit(TW_OPENGL_CORE, NULL);
-	TwWindowSize(1024, 768);
+	if( !InitAntTweakBar(window) ){
+		getchar();
+		glfwTerminate();
+		return -1;
+	}
 	TwBar * GUI = TwNewBar("Picking");
 	TwSetParam(GUI, NULL, "refresh", TW_PARAM_CSTRING, 1, "0.1");
 	std::string message;
@@ -190,7 +197,7 @@ int main( void )
 		// PICKING IS DONE HERE
 		// (Instead of picking each frame if the mouse button is down, 
 		// you should probably only check if the mouse button was just released)
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)){
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) && !ATBMouseOverBar()){ // clicks on the AntTweakBar GUI must not pick objects
 
 			// Clear the screen in white
 			glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -205,7 +212,7 @@ int main( void )
 
 
 				glm::mat4 RotationMatrix = glm::toMat4(orientations[i]);
-				glm::mat4 TranslationMatrix = translate(mat4(), positions[i]);
+				glm::mat4 TranslationMatrix = translate(glm::mat4(1.0f), positions[i]);
 				glm::mat4 ModelMatrix = TranslationMatrix * RotationMatrix;
 
 				glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
@@ -264,7 +271,9 @@ int main( void )
 			// Ultra-mega-over slow too, even for 1 pixel, 
 			// because the framebuffer is on the GPU.
 			unsigned char data[4];
-			glReadPixels(1024/2, 768/2,1,1, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			int fbw, fbh;
+			ATBFramebufferSize(&fbw, &fbh);
+			glReadPixels(fbw/2, fbh/2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
 			// Convert the color back to an integer ID
 			int pickedID = 
@@ -305,7 +314,7 @@ int main( void )
 
 
 			glm::mat4 RotationMatrix = glm::toMat4(orientations[i]);
-			glm::mat4 TranslationMatrix = translate(mat4(), positions[i]);
+			glm::mat4 TranslationMatrix = translate(glm::mat4(1.0f), positions[i]);
 			glm::mat4 ModelMatrix = TranslationMatrix * RotationMatrix;
 
 			glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;

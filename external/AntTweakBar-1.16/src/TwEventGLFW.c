@@ -38,47 +38,21 @@ int TW_CALL TwEventMouseButtonGLFW(GLFWwindow * glfwWindow, int glfwButton, int 
 int g_KMod = 0;
 
 
-int TW_CALL TwEventKeyGLFW(int glfwKey, int glfwAction)
+int TW_CALL TwEventKeyGLFW(GLFWwindow * glfwWindow, int glfwKey, int glfwScancode, int glfwAction, int glfwModifierKeys)
 {
     int handled = 0;
+    if( glfwKey<0 )
+        return 0;
 
-    // Register of modifiers state
-    if( glfwAction==GLFW_PRESS )
-    {
-        switch( glfwKey )
-        {
-        case GLFW_KEY_LSHIFT:
-        case GLFW_KEY_RSHIFT:
-            g_KMod |= TW_KMOD_SHIFT;
-            break;
-        case GLFW_KEY_LCTRL:
-        case GLFW_KEY_RCTRL:
-            g_KMod |= TW_KMOD_CTRL;
-            break;
-        case GLFW_KEY_LALT:
-        case GLFW_KEY_RALT:
-            g_KMod |= TW_KMOD_ALT;
-            break;
-        }
-    }
-    else
-    {
-        switch( glfwKey )
-        {
-        case GLFW_KEY_LSHIFT:
-        case GLFW_KEY_RSHIFT:
-            g_KMod &= ~TW_KMOD_SHIFT;
-            break;
-        case GLFW_KEY_LCTRL:
-        case GLFW_KEY_RCTRL:
-            g_KMod &= ~TW_KMOD_CTRL;
-            break;
-        case GLFW_KEY_LALT:
-        case GLFW_KEY_RALT:
-            g_KMod &= ~TW_KMOD_ALT;
-            break;
-        }
-    }
+    // Register of modifiers state (GLFW 3 reports the modifiers with every
+    // key event, so there is no need to track the shift/ctrl/alt keys here)
+    g_KMod = 0;
+    if( glfwModifierKeys & GLFW_MOD_SHIFT )
+        g_KMod |= TW_KMOD_SHIFT;
+    if( glfwModifierKeys & GLFW_MOD_CONTROL )
+        g_KMod |= TW_KMOD_CTRL;
+    if( glfwModifierKeys & GLFW_MOD_ALT )
+        g_KMod |= TW_KMOD_ALT;
 
     // Process key pressed
     if( glfwAction==GLFW_PRESS )
@@ -100,7 +74,7 @@ int TW_CALL TwEventKeyGLFW(int glfwKey, int glfwAction)
             {
                 switch( glfwKey )
                 {
-                case GLFW_KEY_ESC:
+                case GLFW_KEY_ESCAPE:
                     k = TW_KEY_ESCAPE;
                     break;
                 case GLFW_KEY_UP:
@@ -127,13 +101,13 @@ int TW_CALL TwEventKeyGLFW(int glfwKey, int glfwAction)
                 case GLFW_KEY_INSERT:
                     k = TW_KEY_INSERT;
                     break;
-                case GLFW_KEY_DEL:
+                case GLFW_KEY_DELETE:
                     k = TW_KEY_DELETE;
                     break;
-                case GLFW_KEY_PAGEUP:
+                case GLFW_KEY_PAGE_UP:
                     k = TW_KEY_PAGE_UP;
                     break;
-                case GLFW_KEY_PAGEDOWN:
+                case GLFW_KEY_PAGE_DOWN:
                     k = TW_KEY_PAGE_DOWN;
                     break;
                 case GLFW_KEY_HOME:
@@ -181,10 +155,14 @@ int TW_CALL TwEventKeyGLFW(int glfwKey, int glfwAction)
 }
 
 
-int TW_CALL TwEventCharGLFW(int glfwChar, int glfwAction)
+int TW_CALL TwEventCharGLFW(GLFWwindow * glfwWindow, unsigned int glfwChar)
 {
-    if( glfwAction==GLFW_PRESS && (glfwChar & 0xff00)==0 )
-        return TwKeyPressed(glfwChar, g_KMod);
+    // GLFW 3 reports Unicode code points; AntTweakBar fonts cover the
+    // printable Latin-1 range only. Control characters (< 32) are handled
+    // through the key callback (and must not be injected twice, e.g. when
+    // GLFW maps Ctrl+letter to the 0x01..0x1A range).
+    if( glfwChar>=32 && (glfwChar & 0xff00)==0 )
+        return TwKeyPressed((int)glfwChar, g_KMod);
 
     return 0;
 }
@@ -194,7 +172,12 @@ int TW_CALL TwEventMousePosGLFW(GLFWwindow * glfwWindow, double xpos, double ypo
 }
 
 int TW_CALL TwEventMouseWheelGLFW(GLFWwindow * glfwWindow, double xoffset, double yoffset){
-	return TwMouseWheel((int)yoffset);
+	// GLFW 3 reports per-event wheel deltas while AntTweakBar expects an
+	// accumulated wheel position (like the SDL and Win32 helpers below),
+	// so accumulate the deltas before forwarding.
+	static int s_WheelPos = 0;
+	s_WheelPos += (int)yoffset;
+	return TwMouseWheel(s_WheelPos);
 }
 
 
@@ -205,11 +188,14 @@ TW_API int TW_CDECL_CALL TwEventMouseButtonGLFWcdecl(int glfwButton, int glfwAct
 }
 TW_API int TW_CDECL_CALL TwEventKeyGLFWcdecl(int glfwKey, int glfwAction)
 {
-    return TwEventKeyGLFW(glfwKey, glfwAction);
+    return TwEventKeyGLFW(NULL, glfwKey, 0, glfwAction, 0);
 }
 TW_API int TW_CDECL_CALL TwEventCharGLFWcdecl(int glfwChar, int glfwAction)
 {
-    return TwEventCharGLFW(glfwChar, glfwAction);
+    if( glfwAction==GLFW_PRESS )
+        return TwEventCharGLFW(NULL, (unsigned int)glfwChar);
+
+    return 0;
 }
 TW_API int TW_CDECL_CALL TwEventMousePosGLFWcdecl(int mouseX, int mouseY)
 {

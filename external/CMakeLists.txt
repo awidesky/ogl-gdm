@@ -142,6 +142,14 @@ target_link_libraries(ANTTWEAKBAR_116_OGLCORE_GLFW
 	${OPENGL_LIBRARY}
 	${EXTRA_LIBS}
 )
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	# TwMgr.mm uses AppKit (NSCursor, NSImage, NSPasteboard) and the ObjC runtime.
+	# Without these the final link fails with undefined _OBJC_CLASS_$_NS* / _objc_msgSend symbols.
+	target_link_libraries(ANTTWEAKBAR_116_OGLCORE_GLFW
+		"-framework AppKit"
+		"-framework Foundation"
+	)
+endif()
 target_compile_options(ANTTWEAKBAR_116_OGLCORE_GLFW PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
 
 ### ASSIMP ###

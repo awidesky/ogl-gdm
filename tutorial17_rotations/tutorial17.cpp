@@ -22,6 +22,10 @@ using namespace glm;
  
 // Include AntTweakBar
 #include <AntTweakBar.h>
+// Use common/glfw_anttweakbar.hpp instead of registering TwEvent*GLFW callbacks by hand:
+// it installs GLFW3-compatible event trampolines for AntTweakBar, initializes the bar
+// size from the framebuffer (HiDPI-aware), and offers the ATBMouseOverBar() helper.
+#include <common/glfw_anttweakbar.hpp>
  
  
 #include <common/shader.hpp>
@@ -77,8 +81,11 @@ int main( void )
 	}
  
 	// Initialize the GUI
-	TwInit(TW_OPENGL_CORE, NULL);
-	TwWindowSize(1024, 768);
+	if( !InitAntTweakBar(window) ){
+		getchar();
+		glfwTerminate();
+		return -1;
+	}
 	TwBar * EulerGUI = TwNewBar("Euler settings");
 	TwBar * QuaternionGUI = TwNewBar("Quaternion settings");
 	TwSetParam(EulerGUI, NULL, "refresh", TW_PARAM_CSTRING, 1, "0.1");
@@ -91,24 +98,13 @@ int main( void )
 	TwAddVarRW(EulerGUI, "Pos Y"  , TW_TYPE_FLOAT, &gPosition1.y, "step=0.1");
 	TwAddVarRW(EulerGUI, "Pos Z"  , TW_TYPE_FLOAT, &gPosition1.z, "step=0.1");
  
-	TwAddVarRW(QuaternionGUI, "Quaternion", TW_TYPE_QUAT4F, &gOrientation2, "showval=true open=true ");
+	TwAddVarRW(QuaternionGUI, "Quaternion", TW_TYPE_QUAT4F, &gOrientation2, "opened=true");
 	TwAddVarRW(QuaternionGUI, "Use LookAt", TW_TYPE_BOOL8 , &gLookAtOther, "help='Look at the other monkey ?'");
- 
-	// Set GLFW event callbacks. I removed glfwSetWindowSizeCallback for conciseness
-	glfwSetMouseButtonCallback(window, (GLFWmousebuttonfun)TwEventMouseButtonGLFW); // - Directly redirect GLFW mouse button events to AntTweakBar
-	glfwSetCursorPosCallback(window, (GLFWcursorposfun)TwEventMousePosGLFW);          // - Directly redirect GLFW mouse position events to AntTweakBar
-	glfwSetScrollCallback(window, (GLFWscrollfun)TwEventMouseWheelGLFW);    // - Directly redirect GLFW mouse wheel events to AntTweakBar
-	glfwSetKeyCallback(window, (GLFWkeyfun)TwEventKeyGLFW);                         // - Directly redirect GLFW key events to AntTweakBar
-	glfwSetCharCallback(window, (GLFWcharfun)TwEventCharGLFW);                      // - Directly redirect GLFW char events to AntTweakBar
- 
+	// GLFW event callbacks are installed by InitAntTweakBar above: they
+	// forward mouse and keyboard events to AntTweakBar.
  
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
-    // Hide the mouse and enable unlimited movement
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    
-    // Set the mouse at the center of the screen
-    glfwPollEvents();
     glfwSetCursorPos(window, 1024/2, 768/2);
  
 	// Dark blue background
@@ -121,7 +117,12 @@ int main( void )
  
 	// Cull triangles which normal is not towards the camera
 	glEnable(GL_CULL_FACE);
- 
+
+	// A VAO is required to issue draw calls in core profile
+	GLuint VertexArrayID;
+	glGenVertexArrays(1, &VertexArrayID);
+	glBindVertexArray(VertexArrayID);
+
 	// Create and compile our GLSL program from the shaders
 	GLuint programID = LoadShaders( "StandardShading.vertexshader", "StandardShading.fragmentshader" );
  
@@ -267,8 +268,8 @@ int main( void )
  
 			// Build the model matrix
 			glm::mat4 RotationMatrix = eulerAngleYXZ(gOrientation1.y, gOrientation1.x, gOrientation1.z);
-			glm::mat4 TranslationMatrix = translate(mat4(), gPosition1); // A bit to the left
-			glm::mat4 ScalingMatrix = scale(mat4(), vec3(1.0f, 1.0f, 1.0f));
+			glm::mat4 TranslationMatrix = translate(glm::mat4(1.0f), gPosition1); // A bit to the left
+			glm::mat4 ScalingMatrix = scale(glm::mat4(1.0f), vec3(1.0f, 1.0f, 1.0f));
 			glm::mat4 ModelMatrix = TranslationMatrix * RotationMatrix * ScalingMatrix;
  
 			glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
@@ -305,8 +306,8 @@ int main( void )
 			}
  
 			glm::mat4 RotationMatrix = mat4_cast(gOrientation2);
-			glm::mat4 TranslationMatrix = translate(mat4(), gPosition2); // A bit to the right
-			glm::mat4 ScalingMatrix = scale(mat4(), vec3(1.0f, 1.0f, 1.0f));
+			glm::mat4 TranslationMatrix = translate(glm::mat4(1.0f), gPosition2); // A bit to the right
+			glm::mat4 ScalingMatrix = scale(glm::mat4(1.0f), vec3(1.0f, 1.0f, 1.0f));
 			glm::mat4 ModelMatrix = TranslationMatrix * RotationMatrix * ScalingMatrix;
  
 			glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
@@ -343,6 +344,7 @@ int main( void )
 		   glfwWindowShouldClose(window) == 0 );
  
 	// Cleanup VBO and shader
+	glDeleteVertexArrays(1, &VertexArrayID);
 	glDeleteBuffers(1, &vertexbuffer);
 	glDeleteBuffers(1, &uvbuffer);
 	glDeleteBuffers(1, &normalbuffer);

@@ -494,6 +494,7 @@ add_executable(tutorial17_rotations
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	common/quaternion_utils.cpp
@@ -537,6 +538,7 @@ add_executable(misc05_picking_slow_easy
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -564,6 +566,7 @@ add_executable(misc05_picking_custom
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -589,6 +592,7 @@ add_executable(misc05_picking_BulletPhysics
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -606,13 +610,6 @@ target_link_libraries(misc05_picking_BulletPhysics
 set_target_properties(misc05_picking_BulletPhysics PROPERTIES XCODE_ATTRIBUTE_CONFIGURATION_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/misc05_picking/")
 create_target_launcher(misc05_picking_BulletPhysics WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/misc05_picking/")
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	message(STATUS "Excluding [tutorial17_rotations, misc05_picking_slow_easy, misc05_picking_custom, misc05_picking_BulletPhysics]")
-	message(STATUS "from ALL_BUILD on MacOS; they depend on the bundled AntTweakBar 1.16, which does not build on macOS.")
-	set_target_properties(tutorial17_rotations misc05_picking_slow_easy misc05_picking_custom misc05_picking_BulletPhysics
-		PROPERTIES EXCLUDE_FROM_ALL 1 EXCLUDE_FROM_DEFAULT_BUILD 1)
-else()
-endif()
 
 
 add_executable(tutorial18_billboards

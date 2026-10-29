@@ -478,47 +478,34 @@ namespace GLCore { PFNGLGetProcAddress _glGetProcAddress = NULL; }
     #include <dlfcn.h>
 
     static void *gl_dyld = NULL;
-    static const char *gl_prefix = "_";
     void *NSGLCoreGetProcAddressNew(const GLubyte *name)
     {
         void *proc=NULL;
         if (gl_dyld == NULL) 
         {
-            gl_dyld = dlopen("OpenGL",RTLD_LAZY);
+            // Legacy Mac OS X (< 10.8) resolved the bare framework name through
+            // dyld's search paths; modern dyld requires the full framework path.
+            gl_dyld = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY | RTLD_LOCAL);
+            if (gl_dyld == NULL)
+                gl_dyld = dlopen("OpenGL.framework/OpenGL", RTLD_LAZY | RTLD_LOCAL);
         }
-        if (gl_dyld) 
-        {
-            NSString *sym = [[NSString alloc] initWithFormat: @"%s%s",gl_prefix,name];
-            proc = dlsym(gl_dyld,[sym UTF8String]);
-            [sym release];
-        }
+        if (gl_dyld)
+            proc = dlsym(gl_dyld, (const char *)name); // dlsym adds the C symbol prefix itself
         return proc;
     }
 
     int LoadOpenGLCore() 
     {
         _glGetProcAddress = reinterpret_cast<GLCore::PFNGLGetProcAddress>(NSGLCoreGetProcAddressNew);
-
         _glBindVertexArray = reinterpret_cast<PFNglBindVertexArray>(_glGetProcAddress("glBindVertexArray"));
         _glDeleteVertexArrays = reinterpret_cast<PFNglDeleteVertexArrays>(_glGetProcAddress("glDeleteVertexArrays"));
         _glGenVertexArrays = reinterpret_cast<PFNglGenVertexArrays>(_glGetProcAddress("glGenVertexArrays"));
         _glIsVertexArray = reinterpret_cast<PFNglIsVertexArray>(_glGetProcAddress("glIsVertexArray"));
-        
+
         if( _glBindVertexArray==NULL || _glDeleteVertexArrays==NULL || _glGenVertexArrays==NULL || _glIsVertexArray==NULL )
         {
-			// remove the symbols underscore prefix (OSX 10.7 and later)
-			gl_prefix = "";
-            
-            _glBindVertexArray = reinterpret_cast<PFNglBindVertexArray>(_glGetProcAddress("glBindVertexArray"));
-            _glDeleteVertexArrays = reinterpret_cast<PFNglDeleteVertexArrays>(_glGetProcAddress("glDeleteVertexArrays"));
-            _glGenVertexArrays = reinterpret_cast<PFNglGenVertexArrays>(_glGetProcAddress("glGenVertexArrays"));
-            _glIsVertexArray = reinterpret_cast<PFNglIsVertexArray>(_glGetProcAddress("glIsVertexArray"));
-
-            if( _glBindVertexArray==NULL || _glDeleteVertexArrays==NULL || _glGenVertexArrays==NULL || _glIsVertexArray==NULL )
-			{
-                fprintf(stderr, "AntTweakBar: OpenGL Core Profile functions cannot be loaded.\n");
-                return 0;                
-			}
+            fprintf(stderr, "AntTweakBar: OpenGL Core Profile functions cannot be loaded.\n");
+            return 0;
         }
         
         return 1;

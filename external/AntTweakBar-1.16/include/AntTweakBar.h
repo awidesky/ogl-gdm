@@ -319,8 +319,8 @@ typedef struct GLFWwindow GLFWwindow;
 #   define TwEventMouseWheelGLFW  TwEventMouseWheelGLFWcdecl
 #else
     TW_API int  TW_CALL TwEventMouseButtonGLFW(GLFWwindow * glfwWindow, int glfwButton, int glfwAction, int glfwModifierKeys);
-    TW_API int  TW_CALL TwEventKeyGLFW(int glfwKey, int glfwAction);
-    TW_API int  TW_CALL TwEventCharGLFW(int glfwChar, int glfwAction);
+    TW_API int  TW_CALL TwEventKeyGLFW(GLFWwindow * glfwWindow, int glfwKey, int glfwScancode, int glfwAction, int glfwModifierKeys);
+    TW_API int  TW_CALL TwEventCharGLFW(GLFWwindow * glfwWindow, unsigned int glfwChar);
     TW_API int  TW_CALL TwEventMousePosGLFW(GLFWwindow * glfwWindow, double xpos, double ypos);
     TW_API int  TW_CALL TwEventMouseWheelGLFW(GLFWwindow * glfwWindow, double xoffset, double yoffset);
 #endif
