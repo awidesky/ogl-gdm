@@ -263,7 +263,7 @@ int main( void )
  
 		{ // Euler
  
-			// As an example, rotate arount the vertical axis at 180ï¿½/sec
+			// As an example, rotate arount the vertical axis at 180°/sec
 			gOrientation1.y += 3.14159f/2.0f * deltaTime;
  
 			// Build the model matrix
