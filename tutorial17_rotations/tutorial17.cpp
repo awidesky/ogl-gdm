@@ -39,7 +39,7 @@ vec3 gPosition1(-1.5f, 0.0f, 0.0f);
 vec3 gOrientation1;
  
 vec3 gPosition2( 1.5f, 0.0f, 0.0f);
-quat gOrientation2;
+quat gOrientation2(1.0f, 0.0f, 0.0f, 0.0f);
  
 bool gLookAtOther = true;
 

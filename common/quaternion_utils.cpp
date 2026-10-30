@@ -55,7 +55,7 @@ quat RotationBetweenVectors(vec3 start, vec3 dest){
 quat LookAt(vec3 direction, vec3 desiredUp){
 
 	if (length2(direction) < 0.0001f )
-		return quat();
+		return quat(1.0f, 0.0f, 0.0f, 0.0f);
 
 	// Recompute desiredUp so that it's perpendicular to the direction
 	// You can skip that part if you really want to force desiredUp

@@ -208,10 +208,13 @@ int main( void )
 
 	// Generate positions & rotations for 100 monkeys
 	std::vector<glm::vec3> positions(100);
-	std::vector<glm::quat> orientations(100);
+	std::vector<glm::quat> orientations(100, glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
 	for(int i=0; i<100; i++){
 		positions[i] = glm::vec3(rand()%20-10, rand()%20-10, rand()%20-10);
-		orientations[i] = glm::normalize(glm::quat(glm::vec3(rand()%360, rand()%360, rand()%360)));
+		orientations[i] = glm::normalize(glm::quat(glm::vec3(
+			glm::radians(float(rand()%360)),
+			glm::radians(float(rand()%360)),
+			glm::radians(float(rand()%360)))));
 		
 	}
 
@@ -316,8 +319,8 @@ int main( void )
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) && !ATBMouseOverBar()){ // clicks on the AntTweakBar GUI must not pick objects
 
 
-			glm::vec3 out_origin;
-			glm::vec3 out_direction;
+			glm::vec3 out_origin(0.0f);
+			glm::vec3 out_direction(0.0f, 0.0f, 1.0f);
 			ScreenPosToWorldRay(
 				1024/2, 768/2,
 				1024, 768, 

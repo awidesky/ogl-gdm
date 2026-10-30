@@ -53,6 +53,9 @@ add_definitions(
 	-DTW_NO_DIRECT3D
 	-DGLEW_STATIC
 	-D_CRT_SECURE_NO_WARNINGS
+	# GLM_FORCE_CTOR_INIT: restores the pre-GLM-1.0 semantics these tutorials were written against.
+	# With this flag GLM's default ctor initializes them again: mat* -> identity, quat -> identity (0,0,0,1), vec* -> zeros.
+	-DGLM_FORCE_CTOR_INIT
 )
 
 # Tutorial 1
