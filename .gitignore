@@ -42,6 +42,7 @@ tutorial18_billboards_and_particles/tutorial18_particles
 
 external/*
 !external/AntTweakBar-1.16
+!external/assimp-6.0.5
 !external/rpavlik-cmake-modules-76c1eb4
 !external/bullet-2.81-rev2613
 !external/FetchGDM.cmake

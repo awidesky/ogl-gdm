@@ -153,13 +153,9 @@ endif()
 target_compile_options(ANTTWEAKBAR_116_OGLCORE_GLFW PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
 
 ### ASSIMP ###
-# use_or_fetch_package() is defined in gdm's directory scope; pull in its definition.
-include("${GDM_SRC_DIR}/cmake/Dependencies.cmake")
-
-# AssImp 6 dropped BUILD_STATIC_LIB (the old build forced it ON); its only selector
-# is BUILD_SHARED_LIBS, which defaults ON. Normal variable on purpose, unset below:
-# scoped to the fetched subtree, and a user's -DBUILD_SHARED_LIBS=... is left as-is
-# for the rest of this file.
+# Vendored, trimmed AssImp 6.0.5 (the OBJ importer + only the dependencies it needs).
+# AssImp 6 dropped BUILD_STATIC_LIB; its only selector is BUILD_SHARED_LIBS, which
+# defaults ON. Plain (non-cache) variables are scoped to this subtree and unset below.
 set(BUILD_SHARED_LIBS OFF)
 set(ASSIMP_BUILD_TESTS OFF)                    # default ON in 6.x
 set(ASSIMP_INSTALL OFF)                        # default ON in 6.x
@@ -171,16 +167,11 @@ set(ASSIMP_WARNINGS_AS_ERRORS OFF)             # default ON; -Werror would break
 set(ASSIMP_BUILD_DRACO OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF) # core + only the importer this repo uses
 set(ASSIMP_BUILD_OBJ_IMPORTER ON)
+# assimp's own FindZLIB/unzip probes consult pkg-config; skip the probe to avoid
+# its benign "Could NOT find PkgConfig" noise.
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
-# Always build the fetched source (target 'assimp'); an installed assimp (vcpkg on
-# Windows, etc.) would be found and expose only 'assimp::assimp', breaking the link.
-set(CMAKE_DISABLE_FIND_PACKAGE_assimp ON)
-use_or_fetch_package(NAME assimp VERSION 6.0.5
-	GIT_REPOSITORY https://github.com/assimp/assimp
-	GIT_TAG v6.0.5
-	CANDIDATE_TARGETS assimp)
+add_subdirectory( assimp-6.0.5 )
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
-unset(CMAKE_DISABLE_FIND_PACKAGE_assimp)
 unset(BUILD_SHARED_LIBS)
 
 ### BULLET ###
