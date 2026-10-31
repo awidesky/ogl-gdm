@@ -180,7 +180,7 @@ int main( void )
 
 	// Create and compile our GLSL program from the shaders
 	GLuint quad_programID = LoadShaders( "Passthrough.vertexshader", "SimpleTexture.fragmentshader" );
-	GLuint texID = glGetUniformLocation(quad_programID, "texture");
+	GLuint texID = glGetUniformLocation(quad_programID, "myTextureSampler");
 
 
 	// Create and compile our GLSL program from the shaders
