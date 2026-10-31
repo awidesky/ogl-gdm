@@ -153,26 +153,31 @@ endif()
 target_compile_options(ANTTWEAKBAR_116_OGLCORE_GLFW PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
 
 ### ASSIMP ###
-# AssImp already has a CMakeLists.txt so let's use these
+# use_or_fetch_package() is defined in gdm's directory scope; pull in its definition.
+include("${GDM_SRC_DIR}/cmake/Dependencies.cmake")
 
-# Compile built-in, modified version of Zlib
-include(CheckIncludeFile)
-include(CheckTypeSize)
-include(CheckFunctionExists)
-add_subdirectory( assimp-3.0.1270/contrib/zlib )
-
-# Compile without Boost
-include_directories( assimp-3.0.1270/code/BoostWorkaround )
-add_definitions( -DASSIMP_BUILD_BOOST_WORKAROUND )
-
-# Compile AssImp
-set( LIB_INSTALL_DIR "lib")
-set(LIBASSIMP_COMPONENT libassimp3.0-r1270-OGLtuts)
-set(ZLIB_LIBRARIES zlib)
-set(BUILD_STATIC_LIB ON)
-#set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/zlib)
-add_subdirectory( assimp-3.0.1270/code )
-target_compile_options(assimp PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
+# AssImp 6 dropped BUILD_STATIC_LIB (the old build forced it ON); its only selector
+# is BUILD_SHARED_LIBS, which defaults ON. Normal variable on purpose, unset below:
+# scoped to the fetched subtree, and a user's -DBUILD_SHARED_LIBS=... is left as-is
+# for the rest of this file.
+set(BUILD_SHARED_LIBS OFF)
+set(ASSIMP_BUILD_TESTS OFF)                    # default ON in 6.x
+set(ASSIMP_INSTALL OFF)                        # default ON in 6.x
+set(ASSIMP_NO_EXPORT ON)                       # import-only: also drops the export framework
+set(ASSIMP_WARNINGS_AS_ERRORS OFF)             # default ON; -Werror would break on a new compiler
+# zlib: assimp always links one; keep its platform default (bundled on Windows,
+# system zlib on macOS/Linux). The bundled 1.2.13 does not compile with recent
+# macOS SDKs (zutil.h's fdopen macro clashes with <stdio.h>).
+set(ASSIMP_BUILD_DRACO OFF)
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF) # core + only the importer this repo uses
+set(ASSIMP_BUILD_OBJ_IMPORTER ON)
+set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+use_or_fetch_package(NAME assimp VERSION 6.0.5
+	GIT_REPOSITORY https://github.com/assimp/assimp
+	GIT_TAG v6.0.5
+	CANDIDATE_TARGETS assimp)
+unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
+unset(BUILD_SHARED_LIBS)
 
 ### BULLET ###
 # Bullet already has a CMakeLists.txt so let's use these
