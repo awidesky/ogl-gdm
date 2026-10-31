@@ -172,11 +172,15 @@ set(ASSIMP_BUILD_DRACO OFF)
 set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF) # core + only the importer this repo uses
 set(ASSIMP_BUILD_OBJ_IMPORTER ON)
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+# Always build the fetched source (target 'assimp'); an installed assimp (vcpkg on
+# Windows, etc.) would be found and expose only 'assimp::assimp', breaking the link.
+set(CMAKE_DISABLE_FIND_PACKAGE_assimp ON)
 use_or_fetch_package(NAME assimp VERSION 6.0.5
 	GIT_REPOSITORY https://github.com/assimp/assimp
 	GIT_TAG v6.0.5
 	CANDIDATE_TARGETS assimp)
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
+unset(CMAKE_DISABLE_FIND_PACKAGE_assimp)
 unset(BUILD_SHARED_LIBS)
 
 ### BULLET ###
