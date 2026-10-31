@@ -130,7 +130,7 @@ bool loadAssImp(
 
 	const aiScene* scene = importer.ReadFile(path, 0/*aiProcess_JoinIdenticalVertices | aiProcess_SortByPType*/);
 	if( !scene) {
-		fprintf( stderr, importer.GetErrorString());
+		fprintf( stderr, "%s\n", importer.GetErrorString());
 		getchar();
 		return false;
 	}
