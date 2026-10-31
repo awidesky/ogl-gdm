@@ -148,18 +148,22 @@ void tests(){
 	// Testing standard, easy case
 	// Must be 90� rotation on X : 0.7 0 0 0.7
 	quat X90rot = RotationBetweenVectors(Ypos, Zpos);
+	(void)X90rot; //avoid unused variable warning
 	
 	// Testing with v1 = v2
 	// Must be identity : 0 0 0 1
 	quat id = RotationBetweenVectors(Xpos, Xpos);
+	(void)id;
 	
 	// Testing with v1 = -v2
 	// Must be 180� on +/-Y axis : 0 +/-1 0 0
 	quat Y180rot = RotationBetweenVectors(Xpos, Xneg);
+	(void)Y180rot;
 	
 	// Testing with v1 = -v2, but with a "bad first guess"
 	// Must be 180� on +/-Y axis : 0 +/-1 0 0
 	quat X180rot = RotationBetweenVectors(Zpos, Zneg);
+	(void)X180rot;
 	
 
 }

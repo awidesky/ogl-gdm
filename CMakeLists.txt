@@ -23,6 +23,20 @@ endif()
 # Compile external dependencies 
 add_subdirectory (external)
 
+# Suppress the by-design -Wcast-function-type warnings emitted while compiling the
+# fetched glew-cmake sources: GLEW casts generic GL function pointers obtained from
+# wglGetProcAddress/glXGetProcAddress (PROC/FARPROC) to each extension's typed
+# function pointer. That is the standard GL-loader pattern and safe on the supported
+# platforms, but GCC flags it because the types are not source-level "compatible".
+# Compiler-gated: GCC spells it -Wcast-function-type; Clang uses the stricter
+# -Wcast-function-type-strict; MSVC has no equivalent warning (and does not accept
+# -W flags), so nothing is added for it.
+if(TARGET libglew_static)
+    target_compile_options(libglew_static PRIVATE
+        $<$<C_COMPILER_ID:GNU>:-Wno-cast-function-type>
+        $<$<OR:$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:AppleClang>>:-Wno-cast-function-type-strict>)
+endif()
+
 # On Visual 2005 and above, this module can set the debug working directory
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/rpavlik-cmake-modules-76c1eb4")
 include(CreateLaunchers)
