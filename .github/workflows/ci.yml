@@ -28,10 +28,30 @@ jobs:
         with:
           python-version: '3.x'
 
+      # windows-latest is the Windows Server 2025 VS2026 image, which ships only
+      # Visual Studio 2026; windows-2022/windows-2025 carry 2022. Resolve the
+      # installed one instead of hard-coding a version that may not exist.
+      - name: Resolve Visual Studio generator
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $tools = 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'
+          $installPath = & $vswhere -latest -products * -requires $tools -property installationPath
+          if (-not $installPath) { throw "No Visual Studio with the VC++ x64 toolset found" }
+          $vsVersion = & $vswhere -latest -products * -requires $tools -property installationVersion
+          $major = [int]($vsVersion.Split('.')[0])
+          $generator = @{ 16 = 'Visual Studio 16 2019'; 17 = 'Visual Studio 17 2022'; 18 = 'Visual Studio 18 2026' }[$major]
+          if (-not $generator) { throw "Unsupported Visual Studio major version $major ($vsVersion)" }
+          $cmakeVersion = ((cmake --version | Select-Object -First 1) -replace '^cmake version ','')
+          Write-Host "Visual Studio $vsVersion at $installPath -> -G $generator (CMake $cmakeVersion)"
+          if ($major -ge 18 -and ([version]$cmakeVersion -lt [version]'4.1')) {
+            throw "Visual Studio 18 2026 needs CMake >= 4.1, found $cmakeVersion"
+          }
+          "VS_GENERATOR=$generator" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       # No preinstalled OpenGL libraries are needed: gdm downloads and builds
       # GLFW/GLEW/GLM/GLAD/Assimp from source, and everything static.
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -G "$env:VS_GENERATOR" -A x64
               -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
 
       - name: Build
