@@ -100,6 +100,10 @@ include_directories(
 )
 add_definitions(
 	-D_MACOSX
+	# Apple deprecates OpenGL, but AntTweakBar's GL entry-point loader, which must reference
+	# the deprecated functions by name still use it: hundreds of -Wdeprecated-declarations per build.
+	# Apple's sanctioned way to silence this is this macro, which only affects the OpenGL headers.
+	-DGL_SILENCE_DEPRECATION
 )
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 add_definitions(
