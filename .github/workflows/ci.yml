@@ -1,0 +1,128 @@
+name: ci
+
+# Build-only check: every master push (and PR) must configure and compile on
+# all three supported platforms. The tutorials are interactive OpenGL programs,
+# so nothing is executed here: a headless runner has no display and no GPU.
+# .github/scripts/package.py proves the build (every executable produced) and
+# turns it into an artifact that can be tested on a real machine afterwards.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # No preinstalled OpenGL libraries are needed: gdm downloads and builds
+      # GLFW/GLEW/GLM/GLAD/Assimp from source, and everything static.
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 4
+
+      # Fails the job if any target did not link; then zips every exe with the
+      # assets it loads at runtime.
+      - name: Verify and package
+        run: python .github/scripts/package.py --config RelWithDebInfo
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # Xcode's OpenGL.framework and the command line tools cover the system
+      # interfaces; every third-party library still comes from gdm.
+      - name: Configure
+        run: cmake -S . -B build -G Xcode
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 3
+
+      - name: Verify and package
+        run: python3 .github/scripts/package.py --config RelWithDebInfo
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # The only system packages the build needs: GL/GLU headers (the top level
+      # links -lGL -lGLU) and the X11 headers GLFW 3.4 compiles its X11 and
+      # Wayland backends against. libwayland/libxkbcommon only exist because
+      # GLFW builds Wayland support by default; -DGLFW_BUILD_WAYLAND=OFF in the
+      # configure step drops them. patchelf is for the packaging step, which
+      # repoints any shared dependency it has to bundle at $ORIGIN.
+      - name: Install system OpenGL/X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev \
+            libwayland-dev libxkbcommon-dev \
+            patchelf
+
+      - name: Configure
+        run: cmake -S . -B build -G "Unix Makefiles"
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 4
+
+      - name: Verify and package
+        run: python3 .github/scripts/package.py --config RelWithDebInfo
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          if-no-files-found: error
