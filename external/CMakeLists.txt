@@ -171,6 +171,10 @@ set(ASSIMP_BUILD_OBJ_IMPORTER ON)
 # its benign "Could NOT find PkgConfig" noise.
 set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
 add_subdirectory( assimp-6.0.5 )
+# AssImp 6's headers need C++17 (defs.h declares inline constexpr ai_epsilon;
+if(TARGET assimp)
+	set_target_properties(assimp PROPERTIES INTERFACE_COMPILE_FEATURES "cxx_std_17")
+endif()
 unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
 unset(BUILD_SHARED_LIBS)
 
