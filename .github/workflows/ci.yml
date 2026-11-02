@@ -61,6 +61,7 @@ jobs:
       # assets it loads at runtime.
       - name: Verify and package
         run: python .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
@@ -68,7 +69,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ogl-gdm-windows-${{ github.sha }}
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}
           if-no-files-found: error
 
   build-macos:
@@ -92,6 +96,7 @@ jobs:
 
       - name: Verify and package
         run: python3 .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
@@ -99,7 +104,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ogl-gdm-macos-${{ github.sha }}
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}
           if-no-files-found: error
 
   build-linux:
@@ -137,6 +145,7 @@ jobs:
 
       - name: Verify and package
         run: python3 .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
@@ -144,5 +153,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ogl-gdm-linux-${{ github.sha }}
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/*.zip
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}
           if-no-files-found: error

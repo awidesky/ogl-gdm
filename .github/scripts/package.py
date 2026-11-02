@@ -5,9 +5,15 @@ The CI (see .github/workflows/ci.yml) builds every CMake target but never runs
 them: the tutorials are interactive OpenGL programs, so a headless runner has
 nothing to execute. What CI can prove is that configuring succeeded, that every
 target linked, and that every executable exists. This script turns that proof
-into an artifact: one zip per platform holding every tutorial executable next
-to the assets it loads at runtime, so a build can be exercised on a machine
-that has no OpenGL development files installed.
+into an artifact: every tutorial executable next to the assets it loads at
+runtime, so a build can be exercised on a machine that has no OpenGL
+development files installed.
+
+Two outputs, both optional in combination:
+  * a zip (--out-dir) - what you hand to someone else
+  * the unpacked payload (--payload-dir) - what actions/upload-artifact should
+    get, so the downloaded artifact expands straight into the tutorials instead
+    of into another archive (upload-artifact always zips what it is given)
 
 Usage (usually called from the workflow, but works locally, too):
 
@@ -24,6 +30,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -73,17 +80,52 @@ REQUIREMENTS = {
     "windows": (
         "A GPU/driver exposing a modern OpenGL. Windows only ships opengl32.dll,\n"
         "  which is an OpenGL 1.1 software rasterizer; the tutorials need at least\n"
-        "  GL 3.3 from the graphics driver."
+        "  GL 3.3 from the graphics driver. Nothing else to install."
     ),
     "macos": (
-        "macOS with the built-in OpenGL.framework (deprecated by Apple, but still\n"
-        "  shipped and sufficient for these tutorials, which stay below GL 4.1)."
+        "Nothing to install: OpenGL.framework and the other frameworks these\n"
+        "  executables use ship with macOS itself (OpenGL has been deprecated\n"
+        "  since 10.14, but it is still there and sufficient for these tutorials,\n"
+        "  which stay below GL 4.1).\n"
+        "\n"
+        "If a library ever reports as missing, the matching Homebrew packages are:\n"
+        "      brew install glfw glm cpptrace\n"
+        "\n"
+        "These executables are not notarized - that needs a paid Apple Developer\n"
+        "  ID, which a tutorial project has no use for - so Gatekeeper stops the\n"
+        "  first launch (\"... cannot be opened because Apple cannot check it\").\n"
+        "  Approve each file once in System Settings > Privacy & Security > Open\n"
+        "  Anyway, or clear the download marker for the whole folder at once:\n"
+        "      xattr -dr com.apple.quarantine ."
     ),
     "linux": (
-        "X11 and Mesa's runtime GL library (libGL.so.1 plus the X11 client\n"
-        "  libraries). Desktop Linux already has them; on a minimal system install\n"
-        "  e.g. `libgl1-mesa-dri libx11-6` (Debian/Ubuntu) or `mesa-libGL libX11`\n"
-        "  (Fedora). This is the one platform whose OpenGL pieces cannot be bundled."
+        "X11 and Mesa are not part of the tutorials, so they must come from your\n"
+        "  distribution. Install them with the package manager:\n"
+        "\n"
+        "  Debian/Ubuntu:\n"
+        "      sudo apt-get install -y libgl1 libglu1-mesa libx11-6 libxext6 \\\n"
+        "        libxrandr2 libxinerama1 libxcursor1 libxi6 mesa-utils \\\n"
+        "        mesa-dri-drivers libwayland-client0 libwayland-cursor0 \\\n"
+        "        libwayland-egl1 libxkbcommon0\n"
+        "\n"
+        "  Fedora:\n"
+        "      sudo dnf install -y mesa-libGL mesa-libGLU libX11 libXext \\\n"
+        "        libXrandr libXinerama libXcursor libXi mesa-dri-drivers \\\n"
+        "        mesa-utils libwayland-client libwayland-cursor libwayland-egl \\\n"
+        "        libxkbcommon\n"
+        "\n"
+        "  Arch:\n"
+        "      sudo pacman -S mesa libglu libx11 libxext libxrandr libxinerama \\\n"
+        "        libxcursor libxi mesa-utils wayland libxkbcommon\n"
+        "\n"
+        "Mesa (llvmpipe) provides the software fallback, so these also run on a\n"
+        "  machine with no GPU. Headless, run them under an X server: xvfb-run -a\n"
+        "  ./tutorial01_first_window\n"
+        "\n"
+        "The GLU library, the X11 client libraries and the Wayland/xkbcommon\n"
+        "  packages are needed because the tutorials link -lGLU and GLFW builds\n"
+        "  its X11 and Wayland backends by default; an X11 session (or XWayland)\n"
+        "  satisfies the Wayland ones."
     ),
 }
 
@@ -96,14 +138,15 @@ they load at runtime. Run them from inside their directory, e.g.:
     cd tutorial01_first_window
     ./tutorial01_first_window{exe_note}
 
+Every third-party library the tutorials use (GLFW, GLEW, GLM, Assimp,
+AntTweakBar, Bullet) is linked in, or shipped in the lib/ directory next to
+these folders. You never install those by hand; only what your system does not
+already provide is described below. The executables are stripped: debug
+information is not included, so rebuild locally if you need line-accurate
+tracebacks.
+
 Requirements on the machine that runs these:
 {requirements}
-
-Everything else travels with these executables: gdm's dependencies are built
-statically where possible, and any dependency that came out as a shared library
-(different when a developer machine already has it installed, e.g. via Homebrew)
-was copied into each tutorial directory and repointed at it, so no third-party
-library archive has to be installed.
 """
 
 
@@ -156,6 +199,64 @@ def find_executable(name, source_dir, build_dir, config):
     return None
 
 
+EXECUTABLE_MAGICS = (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",  # Mach-O
+                     b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",  # universal
+                     b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce")  # Mach-O, other endian
+
+
+def is_executable_file(path: Path) -> bool:
+    """Mach-O / ELF / PE, so the artifact's permissions can be normalized by
+    content instead of by name."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(4)
+    except OSError:
+        return False
+    return (head.startswith(b"MZ") or head.startswith(b"\x7fELF")
+            or head in EXECUTABLE_MAGICS)
+
+
+def strip_debug_info(path: Path):
+    """Drop debug/symbol information from a staged executable.
+
+    RelWithDebInfo embeds the debug info of the tutorial *and* of every
+    statically linked library (GLEW, cpptrace/libdwarf, GLFW, Assimp, Bullet)
+    into each of the 26 executables - tens of megabytes repeated. GCC/Clang put
+    it in the binary itself, MSVC moves it to a sidecar .pdb, which is why a
+    Linux artifact dwarfs a Windows one. Only the staged copies are touched;
+    the build tree keeps its symbols for anyone who needs a traceback.
+    """
+    if os.name == "nt":
+        return  # MSVC keeps debug info in the .pdb; there is nothing to strip
+    command = (["strip", "-S", "-x"] if platform.system() == "Darwin"
+               else ["strip", "--strip-unneeded", str(path)])
+    try:
+        subprocess.run(command + [str(path)], check=True, capture_output=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"warning: could not strip {path}: {error}", file=sys.stderr)
+        return
+    if platform.system() == "Darwin":
+        # stripping rewrites the binary, so re-sign it ad-hoc
+        subprocess.run(["codesign", "--force", "--sign", "-", str(path)],
+                       check=True, capture_output=True)
+
+
+def relax_permissions(path: Path, executable: bool = False):
+    """A downloaded artifact must be usable without escalating privileges.
+
+    copy2 preserves the source mode, and the sources we bundle can be read-only
+    (Homebrew's dylibs are mode 444). Removing the quarantine marker macOS puts
+    on a download - `xattr -d com.apple.quarantine` - needs write access to the
+    file, so a read-only bundled library makes the one-command remedy fail.
+    """
+    mode = 0o755 if executable else 0o644
+    try:
+        if path.stat().st_mode & 0o777 != mode:
+            path.chmod(mode)
+    except OSError:
+        pass  # best effort; some filesystems forbid chmod (e.g. mounted volumes)
+
+
 def copy_sources(source_dir: Path, dest_dir: Path, exe_names):
     """Copy a target's source directory minus build inputs and reference art."""
     for root, dirs, files in os.walk(source_dir):
@@ -170,6 +271,7 @@ def copy_sources(source_dir: Path, dest_dir: Path, exe_names):
             if suffix in SKIP_SUFFIXES or suffix in SKIP_BUILD_SUFFIXES:
                 continue
             shutil.copy2(Path(root) / filename, target_root / filename)
+            relax_permissions(target_root / filename)
 
 
 def dynamic_dependencies(binary):
@@ -219,30 +321,78 @@ def is_system_lib(path):
     return any(normalized.startswith(p) for p in prefixes)
 
 
-def repoint(binary, dep, name):
-    """Make `binary` load its bundled copy `name` from the exe's directory."""
+LIB_DIR_NAME = "lib"
+# The payload keeps its libraries one level above each tutorial directory, and
+# both depths are searched so it makes no difference where an exe sits.
+EXE_RPATH = {"Darwin": ["@executable_path/lib", "@executable_path/../lib"],
+             "Linux": ["$ORIGIN/lib", "$ORIGIN/../lib"]}
+LIB_RPATH = {"Darwin": ["@loader_path/"], "Linux": ["$ORIGIN"]}
+
+
+def patch(binary, arguments):
+    """Run a Mach-O/ELF patching tool, then re-sign on Darwin: any
+    install_name_tool change invalidates the (ad-hoc) signature, and macOS then
+    refuses to exec the file at all - SIGKILL, no diagnostic."""
+    subprocess.run(arguments, check=True, capture_output=True)
     if platform.system() == "Darwin":
-        subprocess.run(["install_name_tool", "-change", dep,
-                        f"@executable_path/{name}", str(binary)],
-                       check=True, capture_output=True)
-        # install_name_tool invalidates the (ad-hoc) code signature, and macOS
-        # then refuses to exec the file at all - SIGKILL, no diagnostic.
         subprocess.run(["codesign", "--force", "--sign", "-", str(binary)],
                        check=True, capture_output=True)
+
+
+def rpath_entries(binary):
+    if platform.system() != "Darwin":
+        return []
+    listing = subprocess.run(["otool", "-l", str(binary)],
+                             capture_output=True, text=True).stdout
+    return [m.group(1) for m in re.finditer(r"^\s*path (.+) \(offset", listing, re.M)]
+
+
+def ensure_rpath(binary, rpaths):
+    """Let `binary` find the payload's lib/ directory, and nothing else.
+
+    The build tree can rpath in the machine's own library directories - CMake
+    adds $(brew --prefix)/lib on a Homebrew machine, and dyld honours rpaths in
+    order, so an inherited entry would resolve our @rpath names to the build
+    machine's copies instead of the shipped ones. Every other entry is therefore
+    deleted; on Linux patchelf's --set-rpath replaces the whole list anyway.
+    """
+    rpaths = list(rpaths)
+    if platform.system() == "Darwin":
+        foreign = [r for r in rpath_entries(binary) if r not in rpaths]
+        for rpath in foreign:
+            try:
+                patch(binary, ["install_name_tool", "-delete_rpath", rpath,
+                               str(binary)])
+            except subprocess.CalledProcessError:
+                pass  # duplicate entry: already gone
+        for rpath in rpaths:
+            if rpath not in rpath_entries(binary):
+                patch(binary, ["install_name_tool", "-add_rpath", rpath,
+                               str(binary)])
     else:
         if not shutil.which("patchelf"):
             raise SystemExit(
-                f"error: '{binary}' needs non-system library {dep}; bundling it "
-                "requires patchelf (apt-get install patchelf) to set $ORIGIN rpath")
-        subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", str(binary)],
-                       check=True, capture_output=True)
+                f"error: '{binary}' needs non-system libraries from {LIB_DIR_NAME}/; "
+                "bundling them requires patchelf (apt-get install patchelf) to set "
+                "an $ORIGIN rpath")
+        patch(binary, ["patchelf", "--set-rpath", ":".join(rpaths), str(binary)])
 
 
-def bundle_libs(binary, dest_dir):
-    """Copy every non-system library `binary` needs into dest_dir (recursively)
-    and repoint the copy at it; only the staged exe is patched, never the build
-    output. Returns [bundled library names]."""
-    bundled, queue, seen = {}, [Path(binary)], set()
+def repoint(binary, dep, name):
+    """Make `binary` load the bundled copy `name` through the rpath."""
+    if platform.system() == "Darwin":
+        patch(binary, ["install_name_tool", "-change", dep,
+                       f"@rpath/{name}", str(binary)])
+    # Linux: DT_NEEDED already holds the soname, so the rpath alone is enough.
+
+
+def bundle_libs(binary, lib_dir):
+    """Copy every non-system library `binary` needs into the payload's single
+    lib/ directory (recursively), and repoint the staged copies at it. Nothing
+    outside the OS is shipped more than once; only the staged files are patched,
+    never the build outputs. Returns [bundled library names]."""
+    binary = Path(binary)
+    bundled, queue, seen = {}, [binary], set()
     while queue:
         current = queue.pop()
         for dep in dynamic_dependencies(current):
@@ -250,23 +400,32 @@ def bundle_libs(binary, dest_dir):
                 continue
             seen.add(dep)
             name = Path(dep).name
-            target = dest_dir / name
+            target = lib_dir / name
             if not target.exists():
+                lib_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(dep, target)
+                relax_permissions(target)
                 queue.append(target)
                 if platform.system() == "Darwin":
-                    subprocess.run(["install_name_tool", "-id",
-                                    f"@executable_path/{name}", str(target)],
-                                   check=True, capture_output=True)
-                    subprocess.run(["codesign", "--force", "--sign", "-",
-                                    str(target)], check=True, capture_output=True)
+                    patch(target, ["install_name_tool", "-id",
+                                   f"@rpath/{name}", str(target)])
+                ensure_rpath(target, LIB_RPATH[platform.system()])
             bundled[dep] = name
             repoint(current, dep, name)
+        if current == binary and bundled:
+            ensure_rpath(binary, EXE_RPATH[platform.system()])
+    # install_name_tool rewrites its input through a temporary file, which drops
+    # the executable bit; a payload full of "permission denied" is not a useful
+    # artifact, so re-normalize after every patch.
+    relax_permissions(binary, executable=True)
+    for staged_lib in sorted(lib_dir.glob("*")):
+        if staged_lib.is_file():
+            relax_permissions(staged_lib)
     return sorted(set(bundled.values()))
 
 
 def stage_target(name, source_dir, exe_path, build_dir, config, stage_root,
-                 repo_root, extra_dlls):
+                 repo_root, extra_dlls, lib_dir, exe_names):
     try:
         rel = source_dir.resolve().relative_to(repo_root)
     except ValueError:
@@ -274,8 +433,13 @@ def stage_target(name, source_dir, exe_path, build_dir, config, stage_root,
     dest = stage_root / rel
     dest.mkdir(parents=True, exist_ok=True)
     if source_dir.name not in BARE_DIRS:
-        copy_sources(source_dir, dest, {name + exe_suffix()})
+        # exe_names: every target's file name, so a shared source directory
+        # (three exes live in tutorial09_vbo_indexing/, misc05_picking/, ...)
+        # never re-stages a sibling that an earlier target already patched -
+        # re-copying it would undo its permission normalization.
+        copy_sources(source_dir, dest, exe_names)
     shutil.copy2(exe_path, dest / exe_path.name)
+    relax_permissions(dest / exe_path.name, executable=True)
     # Best-effort companions so a crash on the test machine can be diagnosed.
     for suffix in (".pdb", ".ilk", ".exp"):
         candidate = exe_path.with_suffix(suffix)
@@ -286,14 +450,19 @@ def stage_target(name, source_dir, exe_path, build_dir, config, stage_root,
             if candidate.is_file():
                 shutil.copy2(candidate, dest / candidate.name)
     if extra_dlls:
+        # Windows has no rpath: the loader searches the executable's directory
+        # only, so DLLs must sit next to each exe. (gdm builds static there, so
+        # this list is normally empty.)
         for dll in extra_dlls:
             target = dest / dll.name
             if not target.exists():
                 shutil.copy2(dll, target)
+                relax_permissions(target)
     # gdm prefers an already-installed package when one exists, so a developer
     # machine (Homebrew, ...) links shared libraries a clean machine builds
-    # statically. Bundle whatever is non-system either way.
-    return dest / exe_path.name, bundle_libs(dest / exe_path.name, dest)
+    # statically. Bundle whatever is non-system either way - once, in lib/.
+    bundled = bundle_libs(dest / exe_path.name, lib_dir)
+    return dest / exe_path.name, bundled
 
 
 def write_manifest(stage_root: Path, records, plat, sha, config):
@@ -306,10 +475,15 @@ def write_manifest(stage_root: Path, records, plat, sha, config):
         "%-38s %-46s %10s" % ("target", "path", "size"),
         "-" * 96,
     ]
+    lib_names = sorted({lib for _, _, _, _, _, libs in records for lib in libs})
+    if lib_names:
+        lines.insert(3, f"libraries: {LIB_DIR_NAME}/ (shared by every executable)")
+        lines.insert(4, "")
     for name, _exe, _staged, display, size, bundled in records:
         lines.append("%-38s %-46s %10s" % (name, display, size))
         if bundled:
-            lines.append("%-38s %s" % ("", "bundled: "
+            lines.append("%-38s %s" % ("",
+                                       f"loads from lib/: "
                                        + ", ".join(sorted(set(bundled)))))
     lines.append("")
     lines.append("Dependencies of the staged executables:")
@@ -380,6 +554,15 @@ def main(argv=None):
     parser.add_argument("--out-dir", type=Path, default=None,
                         help="where the zip is written "
                              "(default: $ARTIFACT_DIR or <repo-root>/dist)")
+    parser.add_argument("--payload-dir", type=Path, default=None,
+                        help="also leave the unpacked payload in this directory "
+                             "(for upload-artifact, which zips it once); if it "
+                             "exists it is replaced")
+    parser.add_argument("--no-strip", dest="strip", action="store_false",
+                        default=True,
+                        help="keep debug information in the executables "
+                             "(default: strip it, which cuts the artifact "
+                             "substantially; the build tree keeps its symbols)")
     parser.add_argument("--include-distrib", dest="include_distrib",
                         action="store_true", default=None,
                         help="also expect the Windows-only distrib/ targets "
@@ -433,13 +616,30 @@ def main(argv=None):
         return 1
 
     # --- package --------------------------------------------------------------
-    stage_root = Path(tempfile.mkdtemp(prefix=f"ogl-gdm-{plat}-"))
+    keep_staging = args.payload_dir is not None
+    stage_root = args.payload_dir
+    if keep_staging:
+        if stage_root.exists() and not stage_root.is_dir():
+            print(f"error: --payload-dir {stage_root} is not a directory",
+                  file=sys.stderr)
+            return 1
+        if stage_root.resolve() == repo_root or stage_root == Path(stage_root.anchor):
+            print(f"error: refusing to use --payload-dir {stage_root}",
+                  file=sys.stderr)
+            return 1
+        if stage_root.exists():
+            shutil.rmtree(stage_root)
+    else:
+        stage_root = Path(tempfile.mkdtemp(prefix=f"ogl-gdm-{plat}-"))
     try:
         records, dlls = [], collect_dlls(build_dir, config)
+        exe_names = {name + exe_suffix() for name, _ in targets}
+        lib_dir = stage_root / LIB_DIR_NAME
         bundled_total = 0
         for name, source_dir, exe in found:
             staged, bundled = stage_target(name, source_dir, exe, build_dir,
-                                          config, stage_root, repo_root, dlls)
+                                          config, stage_root, repo_root, dlls,
+                                          lib_dir, exe_names)
             bundled_total += len(bundled)
             try:
                 rel = exe.resolve().relative_to(repo_root)
@@ -450,6 +650,28 @@ def main(argv=None):
         write_manifest(stage_root, records, plat, sha, config)
         write_readme(stage_root, plat, sha, config)
 
+        # Final pass by content, not by name: every executable in the payload
+        # (including ones an earlier target already patched and a later sibling
+        # may have re-staged with a temporary mode) ends up runnable, and
+        # everything else stays writable.
+        for path in sorted(stage_root.rglob("*")):
+            if not path.is_file():
+                continue
+            if args.strip and is_executable_file(path):
+                strip_debug_info(path)
+            relax_permissions(path, executable=is_executable_file(path))
+
+        if bundled_total:
+            names = sorted({lib for _, _, _, _, _, libs in records for lib in libs})
+            print(f"\n{len(names)} non-system librar(ies) bundled once in "
+                  f"{LIB_DIR_NAME}/ ({bundled_total} references): "
+                  + ", ".join(names))
+            if plat == "macos":
+                print("         a downloaded copy asks Gatekeeper approval for each of\n"
+                      "         these files once; `xattr -dr com.apple.quarantine .`\n"
+                      "         in the payload root clears them all at once.",
+                      file=sys.stderr)
+
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_path = out_dir / f"ogl-gdm-{plat}-{sha}.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -459,8 +681,11 @@ def main(argv=None):
         print(f"\npackaged {len(found)} executables, "
               f"{bundled_total} non-system librar(ies), {len(dlls)} dll(s) "
               f"-> {zip_path} ({human_size(zip_path.stat().st_size)})")
+        if keep_staging:
+            print(f"payload tree kept at {stage_root}")
     finally:
-        shutil.rmtree(stage_root, ignore_errors=True)
+        if not keep_staging:
+            shutil.rmtree(stage_root, ignore_errors=True)
     return 0
 
 
