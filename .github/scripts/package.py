@@ -216,6 +216,76 @@ def is_executable_file(path: Path) -> bool:
             or head in EXECUTABLE_MAGICS)
 
 
+WINDOWS_FORBIDDEN_CHARS = '<>:"|?*'
+WINDOWS_RESERVED_STEMS = ({"CON", "PRN", "AUX", "NUL"}
+                          | {f"COM{i}" for i in range(1, 10)}
+                          | {f"LPT{i}" for i in range(1, 10)})
+PLATFORM_MAGIC = {
+    "windows": (b"MZ",),                                # PE
+    "macos": tuple(EXECUTABLE_MAGICS),                  # Mach-O / universal
+    "linux": (b"\x7fELF",),
+}
+
+
+def validate_payload(stage_root: Path, plat: str):
+    """Refuse to ship something the target OS cannot use.
+
+    A directory that Explorer or `dir` reports as corrupted, or an executable
+    that fails with 0x0000007B (ERROR_INVALID_NAME), is a payload problem long
+    before it is a code problem, so catch the two ways it can happen: an entry
+    name the file system rejects, and a staged executable that is not one.
+    """
+    problems = []
+    magic_ok = PLATFORM_MAGIC.get(plat, (b"MZ", b"\x7fELF") + EXECUTABLE_MAGICS)
+    for path in sorted(stage_root.rglob("*")):
+        name = path.name
+        rel = path.relative_to(stage_root)
+        if plat == "windows":
+            forbidden = [c for c in name if c in WINDOWS_FORBIDDEN_CHARS
+                         or ord(c) < 32]
+            if forbidden:
+                problems.append(f"{rel}: name contains {forbidden!r}")
+            if name.rstrip() != name or name.rstrip(".") != name:
+                problems.append(f"{rel}: trailing space or dot")
+            stem = name.split(".")[0].upper()
+            if stem in WINDOWS_RESERVED_STEMS:
+                problems.append(f"{rel}: '{stem}' is a reserved device name")
+            if len(str(rel)) > 200:
+                problems.append(f"{rel}: relative path is {len(str(rel))} chars")
+        if not path.is_file():
+            continue
+        with open(path, "rb") as handle:
+            head = handle.read(4)
+        if is_executable_file(path) and not any(head.startswith(m)
+                                                for m in magic_ok):
+            problems.append(f"{rel}: not a {plat} executable "
+                            f"(magic {head.hex()})")
+        if name.lower().endswith(".exe") and plat == "windows" \
+                and not head.startswith(b"MZ"):
+            problems.append(f"{rel}: .exe that is not a PE image")
+    return problems
+
+
+MACHO_ARCHS = {0x00000007: "x86", 0x01000007: "x86_64",
+               0x0000000C: "arm", 0x0100000C: "arm64"}
+
+
+def describe_binary(path: Path) -> str:
+    """'Mach-O arm64 (3.6 MB)', 'PE (2.1 MB)', ... - what the payload holds,
+    so a reviewer on another machine can tell without running anything."""
+    with open(path, "rb") as handle:
+        head = handle.read(8)
+    size = human_size(path.stat().st_size)
+    if head.startswith(b"MZ"):
+        return f"PE ({size})"
+    if head.startswith(b"\x7fELF"):
+        return f"ELF ({size})"
+    if head[:4] in EXECUTABLE_MAGICS:
+        cputype = int.from_bytes(head[4:8], "little")
+        return f"Mach-O {MACHO_ARCHS.get(cputype, 'arch 0x%x' % cputype)} ({size})"
+    return f"unknown format ({size})"
+
+
 def strip_debug_info(path: Path):
     """Drop debug/symbol information from a staged executable.
 
@@ -479,8 +549,9 @@ def write_manifest(stage_root: Path, records, plat, sha, config):
     if lib_names:
         lines.insert(3, f"libraries: {LIB_DIR_NAME}/ (shared by every executable)")
         lines.insert(4, "")
-    for name, _exe, _staged, display, size, bundled in records:
+    for name, _exe, staged, display, size, bundled in records:
         lines.append("%-38s %-46s %10s" % (name, display, size))
+        lines.append("%-38s %s" % ("", describe_binary(staged)))
         if bundled:
             lines.append("%-38s %s" % ("",
                                        f"loads from lib/: "
@@ -678,6 +749,22 @@ def main(argv=None):
             for path in sorted(stage_root.rglob("*")):
                 if path.is_file():
                     zf.write(path, path.relative_to(stage_root))
+        # a truncated or CRC-broken entry is what Explorer reports as a
+        # "corrupted" directory, so prove the archive before handing it over
+        with zipfile.ZipFile(zip_path) as zf:
+            corrupt = zf.testzip()
+        if corrupt:
+            print(f"error: archive entry is corrupt: {corrupt}", file=sys.stderr)
+            return 1
+
+        problems = validate_payload(stage_root, plat)
+        if problems:
+            print("error: the payload is not usable on this platform:",
+                  file=sys.stderr)
+            for problem in problems:
+                print(f"  {problem}", file=sys.stderr)
+            return 1
+
         print(f"\npackaged {len(found)} executables, "
               f"{bundled_total} non-system librar(ies), {len(dlls)} dll(s) "
               f"-> {zip_path} ({human_size(zip_path.stat().st_size)})")
