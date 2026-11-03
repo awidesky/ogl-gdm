@@ -50,9 +50,12 @@ jobs:
 
       # No preinstalled OpenGL libraries are needed: gdm downloads and builds
       # GLFW/GLEW/GLM/GLAD/Assimp from source, and everything static.
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
       - name: Configure
         run: cmake -S . -B build -G "$env:VS_GENERATOR" -A x64
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel 4
@@ -87,9 +90,12 @@ jobs:
 
       # Xcode's OpenGL.framework and the command line tools cover the system
       # interfaces; every third-party library still comes from gdm.
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
       - name: Configure
         run: cmake -S . -B build -G Xcode
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel 3
@@ -136,9 +142,12 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             patchelf
 
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
       - name: Configure
         run: cmake -S . -B build -G "Unix Makefiles"
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel 4

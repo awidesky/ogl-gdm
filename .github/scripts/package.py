@@ -48,6 +48,9 @@ OPTION_KEYWORDS = {"win32", "macosx_bundle", "exclude_from_all"}
 # tutorials need: the exe loads shaders/textures/models from its directory.
 BARE_DIRS = {"distrib"}
 
+# gdm's own examples built only when GDM_BUILD_EXAMPLES=ON.
+EXAMPLES_DIR = "external/gdm/examples"
+
 # Not needed to run an exe: build inputs, reference screenshots of the old
 # (removed) automated screenshot tests, and OS/editor noise.
 SKIP_DIRS = {"screenshots", "__pycache__", ".git", ".hg"}
@@ -145,7 +148,23 @@ already provide is described below. The executables are stripped: debug
 information is not included, so rebuild locally if you need line-accurate
 tracebacks.
 
-Requirements on the machine that runs these:
+To run them in sequence, run the smoke test script in this directory. Each
+tutorial runs one at a time and waits until you close its window (Esc), then
+moves on to the next one, with the executable's output inline - which is how you
+read the probe's report below:
+
+    macOS / Linux:  ./smoke-test.sh
+    Windows:        .\\smoke-test.ps1
+
+Every executable runs, all of them, including the two or three that share a
+source folder (misc05_picking alone covers picking by three different
+techniques). If nobody is watching, the timed mode runs each for a few seconds,
+kills it, and just reports whether it started at all:
+
+    macOS / Linux:  ./smoke-test.sh --timed 5
+    Windows:        .\\smoke-test.ps1 -Timed 5
+
+{probe}Requirements on the machine that runs these:
 {requirements}
 """
 
@@ -164,6 +183,26 @@ def parse_targets(cmake_file: Path, cmake_dir: Path):
     return targets
 
 
+def probe_targets(repo_root: Path, cache: dict):
+    """[(target, source dir), ...] of gdm's examples, when they were built.
+
+    Parsed from the fetched gdm sources instead of hardcoded, so an upstream gdm
+    that gains an example brings it along by itself. Empty and silent when
+    GDM_BUILD_EXAMPLES is OFF - the default here, since GDM is a dependency.
+    """
+    if cache.get("GDM_BUILD_EXAMPLES", "OFF").upper() != "ON":
+        return []
+    examples_cmake = repo_root / EXAMPLES_DIR / "CMakeLists.txt"
+    if not examples_cmake.is_file():
+        raise SystemExit(f"error: GDM_BUILD_EXAMPLES=ON, but {EXAMPLES_DIR} is "
+                         "missing; the gdm sources were not fetched")
+    parsed = parse_targets(examples_cmake, repo_root / EXAMPLES_DIR)
+    if not parsed:
+        raise SystemExit(f"error: GDM_BUILD_EXAMPLES=ON, but no add_executable() "
+                         f"in {EXAMPLES_DIR}/CMakeLists.txt")
+    return parsed
+
+
 def read_cache(build_dir: Path):
     values = {}
     cache_file = build_dir / "CMakeCache.txt"
@@ -179,14 +218,25 @@ def exe_suffix():
     return ".exe" if os.name == "nt" else ""
 
 
-def find_executable(name, source_dir, build_dir, config):
+def find_executable(name, source_dir, build_dir, config, repo_root=None):
     """Where the build put the exe: source dir (POST_BUILD copy / Xcode), build
-    dir, or multi-config subdir. Falls back to a bounded search of the build
-    tree, which covers generators we did not anticipate."""
+    dir, or multi-config subdir. Targets declared in a subdirectory of the source
+    tree keep that layout under build/ too - gdm's examples land in
+    build/external/gdm/examples/ - so those paths are probed before the bounded
+    search of the build tree, which covers generators we did not anticipate."""
     exe = name + exe_suffix()
     candidates = [source_dir / exe, build_dir / exe]
     if config:
         candidates.insert(1, build_dir / config / exe)
+    if repo_root is not None:
+        try:
+            source_rel = source_dir.resolve().relative_to(repo_root)
+        except ValueError:
+            source_rel = None
+        if source_rel:
+            sub = build_dir / source_rel
+            candidates += [sub / exe, sub / config / exe if config else None]
+            candidates = [c for c in candidates if c is not None]
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -495,14 +545,16 @@ def bundle_libs(binary, lib_dir):
 
 
 def stage_target(name, source_dir, exe_path, build_dir, config, stage_root,
-                 repo_root, extra_dlls, lib_dir, exe_names):
+                 repo_root, extra_dlls, lib_dir, exe_names, dest_dir=None):
+    """dest_dir: stage the exe directly there, with no sources copied - for
+    gdm's examples, whose directory holds one .cpp and no runtime assets."""
     try:
         rel = source_dir.resolve().relative_to(repo_root)
     except ValueError:
         rel = Path(source_dir.name)
-    dest = stage_root / rel
+    dest = dest_dir if dest_dir is not None else stage_root / rel
     dest.mkdir(parents=True, exist_ok=True)
-    if source_dir.name not in BARE_DIRS:
+    if dest_dir is None and source_dir.name not in BARE_DIRS:
         # exe_names: every target's file name, so a shared source directory
         # (three exes live in tutorial09_vbo_indexing/, misc05_picking/, ...)
         # never re-stages a sibling that an earlier target already patched -
@@ -542,20 +594,28 @@ def write_manifest(stage_root: Path, records, plat, sha, config):
         + (f" - configuration {config}" if config else ""),
         f"targets: {len(records)}",
         "",
-        "%-38s %-46s %10s" % ("target", "path", "size"),
-        "-" * 96,
     ]
     lib_names = sorted({lib for _, _, _, _, _, libs in records for lib in libs})
     if lib_names:
-        lines.insert(3, f"libraries: {LIB_DIR_NAME}/ (shared by every executable)")
-        lines.insert(4, "")
+        lines.append(f"libraries: {LIB_DIR_NAME}/ (shared by every executable)")
+        lines.append("")
+
+    # Column widths are taken from the content, never hardcoded. The path is the
+    # only unbounded column (tutorial06_keyboard_and_mouse/... is 67 chars), so
+    # it goes last: a fixed-width path column would push the size right out of
+    # alignment, while trailing overflow costs nothing.
+    name_width = max([len("target")] + [len(r[0]) for r in records])
+    size_width = max([len("size")] + [len(r[4]) for r in records])
+    indent = " " * (name_width + size_width + 3)
+    header = f"{'target':<{name_width}} {'size':>{size_width}}  path"
+    lines.append(header)
+    lines.append("-" * len(header))
     for name, _exe, staged, display, size, bundled in records:
-        lines.append("%-38s %-46s %10s" % (name, display, size))
-        lines.append("%-38s %s" % ("", describe_binary(staged)))
+        lines.append(f"{name:<{name_width}} {size:>{size_width}}  {display}")
+        lines.append(f"{indent}{describe_binary(staged)}")
         if bundled:
-            lines.append("%-38s %s" % ("",
-                                       f"loads from lib/: "
-                                       + ", ".join(sorted(set(bundled)))))
+            lines.append(f"{indent}loads from lib/: "
+                        + ", ".join(sorted(set(bundled))))
     lines.append("")
     lines.append("Dependencies of the staged executables:")
     dumped = False
@@ -570,12 +630,40 @@ def write_manifest(stage_root: Path, records, plat, sha, config):
     (stage_root / "MANIFEST.txt").write_text("\n".join(lines) + "\n")
 
 
-def write_readme(stage_root: Path, plat, sha, config):
+def stage_smoke_tests(stage_root: Path, plat: str):
+    """Ship the bulk smoke test scripts inside the artifact, so whoever gets it
+    can run every tutorial at once instead of one by one. Only this platform's
+    script is copied - the others would be dead weight."""
+    for script in sorted(SCRIPT_DIR.glob("smoke-test.*")):
+        if plat == "windows" and script.suffix != ".ps1":
+            continue
+        if plat != "windows" and script.suffix != ".sh":
+            continue
+        shutil.copy2(script, stage_root / script.name)
+        relax_permissions(stage_root / script.name,
+                          executable=script.suffix == ".sh")
+
+
+PROBE_PARAGRAPH = """Not a tutorial: the probe in this directory prints this machine's OpenGL
+environment - GL version, vendor, renderer, capability limits, GPU memory and
+supported extensions - then draws a triangle until you close its window. Run it
+when you report a problem and attach the output: it tells which environment
+produced the error.
+
+    macOS / Linux:  ./{exe}
+    Windows:        {exe}.exe
+
+"""
+
+
+def write_readme(stage_root: Path, plat, sha, config, probe_names=()):
+    probe = PROBE_PARAGRAPH.format(exe=probe_names[0]) if probe_names else ""
     note = ".exe (Windows)" if plat == "windows" else ""
     (stage_root / "README.txt").write_text(README_TEMPLATE.format(
         plat=plat, sha=sha, config=f" - configuration {config}" if config else "",
         requirements=REQUIREMENTS[plat],
         exe_note=note,
+        probe=probe,
     ))
 
 
@@ -661,6 +749,8 @@ def main(argv=None):
     if include_distrib and (repo_root / "distrib" / "CMakeLists.txt").is_file():
         targets += parse_targets(repo_root / "distrib" / "CMakeLists.txt",
                                  repo_root / "distrib")
+    probes = probe_targets(repo_root, cache)
+    targets += probes
 
     if not targets:
         print(f"error: no executables declared in {repo_root / 'CMakeLists.txt'}",
@@ -672,7 +762,7 @@ def main(argv=None):
           f"(commit {sha}, {build_dir})")
     found, missing = [], []
     for name, source_dir in targets:
-        exe = find_executable(name, source_dir, build_dir, config)
+        exe = find_executable(name, source_dir, build_dir, config, repo_root)
         (found if exe else missing).append((name, source_dir, exe))
 
     print(f"\n{len(found)}/{len(targets)} targets built:")
@@ -707,19 +797,28 @@ def main(argv=None):
         exe_names = {name + exe_suffix() for name, _ in targets}
         lib_dir = stage_root / LIB_DIR_NAME
         bundled_total = 0
+        examples_bin_dir = (repo_root / EXAMPLES_DIR).resolve()
         for name, source_dir, exe in found:
+            # gdm's examples go to the payload root, next to the README that
+            # explains them, with no source files copied.
+            dest_dir = stage_root if source_dir.resolve() == examples_bin_dir else None
             staged, bundled = stage_target(name, source_dir, exe, build_dir,
                                           config, stage_root, repo_root, dlls,
-                                          lib_dir, exe_names)
+                                          lib_dir, exe_names, dest_dir=dest_dir)
             bundled_total += len(bundled)
             try:
                 rel = exe.resolve().relative_to(repo_root)
             except ValueError:
                 rel = Path(exe.name)
+            if dest_dir is not None:
+                # the MANIFEST's path column is payload-relative, and a probe
+                # is staged by hand, not where its sources live
+                rel = staged.relative_to(stage_root)
             records.append((name, exe, staged, rel, human_size(exe.stat().st_size),
                             bundled))
         write_manifest(stage_root, records, plat, sha, config)
-        write_readme(stage_root, plat, sha, config)
+        write_readme(stage_root, plat, sha, config, [n for n, _ in probes])
+        stage_smoke_tests(stage_root, plat)
 
         # Final pass by content, not by name: every executable in the payload
         # (including ones an earlier target already patched and a later sibling
@@ -730,7 +829,11 @@ def main(argv=None):
                 continue
             if args.strip and is_executable_file(path):
                 strip_debug_info(path)
-            relax_permissions(path, executable=is_executable_file(path))
+            # never take an execute bit away: the smoke-test script is a shell
+            # script, not a binary, but it must still be runnable as ./smoke-test.sh
+            relax_permissions(path,
+                              executable=is_executable_file(path)
+                              or os.access(path, os.X_OK))
 
         if bundled_total:
             names = sorted({lib for _, _, _, _, _, libs in records for lib in libs})
