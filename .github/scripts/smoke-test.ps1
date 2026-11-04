@@ -26,6 +26,8 @@
     Defender exclusion, because unsigned executables are scanned on every launch
     (that needs an elevated shell, and is skipped with a warning if it fails).
 
+    At the end it waits for Enter, so the output does not vanish with the window.
+
 .PARAMETER List
     Only print the executables that would run.
 
@@ -54,11 +56,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# PowerShell 7.4 can turn a native command's non-zero exit into a terminating
-# error; we want the real code from $LASTEXITCODE instead
-if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
-    $PSNativeCommandUseErrorActionPreference = $false
-}
 # only a value that was actually passed is checked: absent means interactive,
 # whose sentinel is the same 0
 if ($PSBoundParameters.ContainsKey('Timed') -and $Timed -lt 1) {
@@ -67,6 +64,20 @@ if ($PSBoundParameters.ContainsKey('Timed') -and $Timed -lt 1) {
 $interactive = ($Timed -eq 0)
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $here
+
+function Start-ConsoleProcess {
+    # UseShellExecute = $false hands the child this console's own handles, so its
+    # output goes straight to the console. Running it through PowerShell (the
+    # call operator, or Start-Process) routes the output through PowerShell,
+    # which re-emits every line: a native program writing CRLF then gets a blank
+    # line after each of its lines.
+    param([System.IO.FileInfo]$Exe)
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $Exe.FullName
+    $startInfo.WorkingDirectory = $Exe.DirectoryName
+    $startInfo.UseShellExecute = $false
+    [System.Diagnostics.Process]::Start($startInfo)
+}
 
 # 1. let a downloaded copy run.
 #    Remove the Mark of the Web: without it Windows refuses, or prompts for, each
@@ -121,45 +132,31 @@ foreach ($exe in $executables) {
     Write-Host ""
     Write-Host "========== $($exe.Name) =========="
     if ($interactive) {
-        # no timeout and no kill: run it in the foreground with the call
-        # operator, so it inherits this console and its output appears inline,
-        # and wait until its window is closed (Esc). Start-Process would detach
-        # it from the console, which is why nothing was printed before.
-        Push-Location -LiteralPath $exe.DirectoryName
+        # no timeout and no kill: it runs attached to this console, and the
+        # script waits until its window is closed (Esc)
         try {
-            $LASTEXITCODE = 0        # clear a stale code before the run
-            & $exe.FullName
-            $code = $LASTEXITCODE
+            $process = Start-ConsoleProcess $exe
         }
         catch {
-            $code = 1
-            Write-Host "      $($_.Exception.Message)"
+            $failed++
+            Write-Host "FAIL  $($exe.Name) (could not start: $($_.Exception.Message))"
+            continue
         }
-        finally {
-            Pop-Location
-        }
-        if ($null -eq $code) { $code = 0 }
-        if ($code -eq 0) {
+        $process.WaitForExit()
+        if ($process.ExitCode -eq 0) {
             $passed++
             Write-Host "PASS  $($exe.Name) (closed)"
         }
         else {
             $failed++
-            Write-Host "FAIL  $($exe.Name) (exit $code)"
+            Write-Host "FAIL  $($exe.Name) (exit $($process.ExitCode))"
         }
         continue
     }
 
-    # timed: same console output, but killed after a few seconds. The .NET API
-    # is used instead of Start-Process because UseShellExecute = $false is what
-    # makes the child share this console (Start-Process would give it a new
-    # window, or none at all when it redirects).
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $exe.FullName
-    $startInfo.WorkingDirectory = $exe.DirectoryName
-    $startInfo.UseShellExecute = $false
+    # timed: same console output, but killed after a few seconds
     try {
-        $process = [System.Diagnostics.Process]::Start($startInfo)
+        $process = Start-ConsoleProcess $exe
     }
     catch {
         # one executable that cannot even start must not stop the whole run
@@ -200,4 +197,9 @@ if ($List) { exit 0 }
 
 Write-Host ''
 Write-Host "$passed passed, $failed failed"
+
+# hold the console open so the output above can be read
+Write-Host ''
+try { Read-Host 'Press Enter to exit' | Out-Null } catch { }
+
 if ($failed -ne 0) { exit 1 }

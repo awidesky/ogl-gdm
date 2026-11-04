@@ -151,7 +151,8 @@ tracebacks.
 To run them in sequence, run the smoke test script in this directory. Each
 tutorial runs one at a time and waits until you close its window (Esc), then
 moves on to the next one, with the executable's output inline - which is how you
-read the probe's report below:
+read the probe's report below. The script waits for Enter at the end, so the
+output does not disappear with the window:
 
     macOS / Linux:  ./smoke-test.sh
     Windows:        .\\smoke-test.ps1

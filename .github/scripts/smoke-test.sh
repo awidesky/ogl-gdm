@@ -6,7 +6,9 @@
 #   ./smoke-test.sh --list        # only show what would run
 #
 # Runs the tutorial executables from inside their own directory (the assets are
-# loaded relative to it), and reports whether they ran.
+# loaded relative to it), and reports whether they ran. At the end it waits for
+# Enter, so the output does not vanish when the terminal is opened by a
+# double-click.
 #
 # Interactive (the default): no timeout and no kill - the script waits until you
 # close each window (Esc), then moves on to the next one, with the executable's
@@ -179,4 +181,13 @@ done
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 cleanup
+
+# hold the terminal open so the output above can be read (only when there is a
+# terminal to read from: piped runs would otherwise wait for input that never
+# comes)
+if [ -t 0 ]; then
+    printf '\nPress Enter to exit '
+    read -r || true
+fi
+
 [ "$failed" -eq 0 ] || exit 1
