@@ -13,9 +13,10 @@
 # output inline. This is the mode for actually using the tutorials, and for
 # reading what the gdm probe at the payload root prints about this machine.
 #
-# Timed (--timed [seconds]): let each run for a few seconds and kill it - a quick
-# pass over the whole set, for when nobody is watching. Surviving there means an
-# executable started, found its assets and loaded its libraries.
+# Timed (--timed [seconds]): same console output, but each executable is killed
+# after a few seconds - a quick pass over the whole set, for when nobody is
+# watching. Surviving there means an executable started, found its assets and
+# loaded its libraries.
 #
 # Every executable runs, all of them: four source directories hold two or three
 # (tutorial09_vbo_indexing, misc05_picking, t16, t18) and they are separate
@@ -57,10 +58,8 @@ esac
 # rm once, up front, and call cleanup explicitly where the script exits.
 RM="$(command -v rm)"
 listing="$(mktemp)"
-scratch=""
 cleanup() {
     [ -n "${listing:-}" ] && "$RM" -rf -- "$listing" 2>/dev/null
-    [ -n "${scratch:-}" ] && "$RM" -rf -- "$scratch" 2>/dev/null
     return 0
 }
 trap cleanup EXIT
@@ -119,15 +118,15 @@ if [ "$list_only" -eq 1 ]; then
     exit 0
 fi
 
-# 3. run each one, then kill it.
-scratch="$(mktemp -d)"
+# 3. run each one. Output is never redirected, in either mode: it lands in this
+#    console as the executable produces it.
 passed=0
 failed=0
 
 for exe in "${executables[@]}"; do
     label="${exe#./}"
     name="${exe##*/}"
-    # a separator per executable, so the log can be read - or split at - the
+    # a separator per executable, so the console can be read - or split at - the
     # boundary between runs
     printf '\n========== %s ==========\n' "$name"
     if [ "$timed" -eq 0 ]; then
@@ -144,10 +143,10 @@ for exe in "${executables[@]}"; do
         fi
         continue
     fi
+    # timed: same console output, but the process is killed after a few seconds.
     # exec replaces the subshell, so $! is the executable itself and can be
-    # killed; the exe's stdout/stderr go to a log we can show on failure.
-    ( cd -- "$(dirname -- "$exe")" && exec "./$(basename -- "$exe")" ) \
-        >"$scratch/log" 2>&1 &
+    # killed.
+    ( cd -- "$(dirname -- "$exe")" && exec "./$(basename -- "$exe")" ) &
     pid=$!
     sleep "$wait_seconds"
 
@@ -174,7 +173,6 @@ for exe in "${executables[@]}"; do
         else
             failed=$((failed + 1))
             printf 'FAIL  %s (exit %d)\n' "$label" "$exit_status"
-            sed 's/^/      /' "$scratch/log" | head -n 8
         fi
     fi
 done

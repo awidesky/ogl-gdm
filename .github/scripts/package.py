@@ -158,8 +158,9 @@ read the probe's report below:
 
 Every executable runs, all of them, including the two or three that share a
 source folder (misc05_picking alone covers picking by three different
-techniques). If nobody is watching, the timed mode runs each for a few seconds,
-kills it, and just reports whether it started at all:
+techniques). Output appears in the console in both modes. If nobody is watching,
+the timed mode runs each for a few seconds and then kills it, only reporting
+whether it started at all:
 
     macOS / Linux:  ./smoke-test.sh --timed 5
     Windows:        .\\smoke-test.ps1 -Timed 5

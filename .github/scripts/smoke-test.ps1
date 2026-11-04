@@ -31,9 +31,10 @@
 
 .PARAMETER Timed
     Opt out of the interactive default. Let each executable run for the given
-    number of seconds, kill it, and capture its output in a log: a quick pass
-    over the whole set for when nobody is watching. Surviving there proves each
-    starts, finds its assets and loads its libraries, but not that it renders.
+    number of seconds and then kill it: a quick pass over the whole set for when
+    nobody is watching. Its output still appears in this console. Surviving there
+    proves each starts, finds its assets and loads its libraries, but not that it
+    renders.
 
 .PARAMETER DefenderBypass
     Add an exclusion for the payload directory to Windows Defender.
@@ -53,7 +54,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($Timed -lt 1) {
+# PowerShell 7.4 can turn a native command's non-zero exit into a terminating
+# error; we want the real code from $LASTEXITCODE instead
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
+# only a value that was actually passed is checked: absent means interactive,
+# whose sentinel is the same 0
+if ($PSBoundParameters.ContainsKey('Timed') -and $Timed -lt 1) {
     throw '-Timed needs a number of seconds, for example: -Timed 5.'
 }
 $interactive = ($Timed -eq 0)
@@ -100,9 +108,6 @@ if ($interactive) {
 }
 Write-Host "root: $here"
 
-$scratch = Join-Path $env:TEMP "ogl-gdm-smoke"
-$null = New-Item -ItemType Directory -Path $scratch -Force
-
 $passed = 0
 $failed = 0
 foreach ($exe in $executables) {
@@ -111,38 +116,56 @@ foreach ($exe in $executables) {
         continue
     }
 
-    # a separator per executable, so the log can be read - or split at - the
+    # a separator per executable, so the console can be read - or split at - the
     # boundary between runs
     Write-Host ""
     Write-Host "========== $($exe.Name) =========="
-    $log = Join-Path $scratch "$($exe.BaseName).log"
-    $arguments = @{
-        FilePath         = $exe.FullName
-        WorkingDirectory = $exe.DirectoryName
-        PassThru         = $true
-    }
     if ($interactive) {
-        # no timeout and no kill: wait until the window is closed (Esc), with the
-        # executable writing straight to this console
-        $process = Start-Process @arguments -Wait
-        if ($process.ExitCode -eq 0) {
+        # no timeout and no kill: run it in the foreground with the call
+        # operator, so it inherits this console and its output appears inline,
+        # and wait until its window is closed (Esc). Start-Process would detach
+        # it from the console, which is why nothing was printed before.
+        Push-Location -LiteralPath $exe.DirectoryName
+        try {
+            $LASTEXITCODE = 0        # clear a stale code before the run
+            & $exe.FullName
+            $code = $LASTEXITCODE
+        }
+        catch {
+            $code = 1
+            Write-Host "      $($_.Exception.Message)"
+        }
+        finally {
+            Pop-Location
+        }
+        if ($null -eq $code) { $code = 0 }
+        if ($code -eq 0) {
             $passed++
             Write-Host "PASS  $($exe.Name) (closed)"
         }
         else {
             $failed++
-            Write-Host "FAIL  $($exe.Name) (exit $($process.ExitCode))"
+            Write-Host "FAIL  $($exe.Name) (exit $code)"
         }
         continue
     }
 
+    # timed: same console output, but killed after a few seconds. The .NET API
+    # is used instead of Start-Process because UseShellExecute = $false is what
+    # makes the child share this console (Start-Process would give it a new
+    # window, or none at all when it redirects).
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $exe.FullName
+    $startInfo.WorkingDirectory = $exe.DirectoryName
+    $startInfo.UseShellExecute = $false
     try {
-        $process = Start-Process @arguments -RedirectStandardOutput $log `
-            -RedirectStandardError "$log.err"
+        $process = [System.Diagnostics.Process]::Start($startInfo)
     }
     catch {
-        # a GUI subsystem executable does not accept redirected handles
-        $process = Start-Process @arguments
+        # one executable that cannot even start must not stop the whole run
+        $failed++
+        Write-Host "FAIL  $($exe.Name) (could not start: $($_.Exception.Message))"
+        continue
     }
 
     Start-Sleep -Seconds $Timed
@@ -167,20 +190,8 @@ foreach ($exe in $executables) {
             Write-Host "PASS  $($exe.Name) (exited cleanly)"
         }
         else {
-            $status = $process.ExitCode
             $failed++
-            Write-Host "FAIL  $($exe.Name) (exit $status)"
-            foreach ($stream in @("$log.err", $log)) {
-                if (Test-Path -LiteralPath $stream) {
-                    $content = Get-Content -LiteralPath $stream -Raw -ErrorAction SilentlyContinue
-                    if ($content -and $content.Trim()) {
-                        $content -split "`r?`n" |
-                            Select-Object -First 8 |
-                            ForEach-Object { Write-Host "      $_" }
-                        break
-                    }
-                }
-            }
+            Write-Host "FAIL  $($exe.Name) (exit $($process.ExitCode))"
         }
     }
 }
