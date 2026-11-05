@@ -21,6 +21,10 @@ using namespace glm;
 
 // Include AntTweakBar
 #include <AntTweakBar.h>
+// Use common/glfw_anttweakbar.hpp instead of registering TwEvent*GLFW callbacks by hand:
+// it installs GLFW3-compatible event trampolines for AntTweakBar, initializes the bar
+// size from the framebuffer (HiDPI-aware), and offers the ATBMouseOverBar() helper.
+#include <common/glfw_anttweakbar.hpp>
 
 // Include Bullet
 #include <btBulletDynamicsCommon.h>
@@ -98,7 +102,8 @@ int main( void )
 	glfwWindowHint(GLFW_SAMPLES, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make macOS happy; should not be needed
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // compat profile is not exposed on macOS
 
 	// Open a window and create its OpenGL context
 	window = glfwCreateWindow( 1024, 768, "Misc 05 - Bullet version", NULL, NULL);
@@ -120,8 +125,11 @@ int main( void )
 	}
 
 	// Initialize the GUI
-	TwInit(TW_OPENGL_CORE, NULL);
-	TwWindowSize(1024, 768);
+	if( !InitAntTweakBar(window) ){
+		getchar();
+		glfwTerminate();
+		return -1;
+	}
 	TwBar * GUI = TwNewBar("Picking");
 	TwSetParam(GUI, NULL, "refresh", TW_PARAM_CSTRING, 1, "0.1");
 	std::string message;
@@ -200,10 +208,13 @@ int main( void )
 
 	// Generate positions & rotations for 100 monkeys
 	std::vector<glm::vec3> positions(100);
-	std::vector<glm::quat> orientations(100);
+	std::vector<glm::quat> orientations(100, glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
 	for(int i=0; i<100; i++){
 		positions[i] = glm::vec3(rand()%20-10, rand()%20-10, rand()%20-10);
-		orientations[i] = glm::normalize(glm::quat(glm::vec3(rand()%360, rand()%360, rand()%360)));
+		orientations[i] = glm::normalize(glm::quat(glm::vec3(
+			glm::radians(float(rand()%360)),
+			glm::radians(float(rand()%360)),
+			glm::radians(float(rand()%360)))));
 		
 	}
 
@@ -305,11 +316,11 @@ int main( void )
 		// PICKING IS DONE HERE
 		// (Instead of picking each frame if the mouse button is down, 
 		// you should probably only check if the mouse button was just released)
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)){
+		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) && !ATBMouseOverBar()){ // clicks on the AntTweakBar GUI must not pick objects
 
 
-			glm::vec3 out_origin;
-			glm::vec3 out_direction;
+			glm::vec3 out_origin(0.0f);
+			glm::vec3 out_direction(0.0f, 0.0f, 1.0f);
 			ScreenPosToWorldRay(
 				1024/2, 768/2,
 				1024, 768, 
@@ -352,7 +363,7 @@ int main( void )
 
 
 			glm::mat4 RotationMatrix = glm::toMat4(orientations[i]);
-			glm::mat4 TranslationMatrix = translate(mat4(), positions[i]);
+			glm::mat4 TranslationMatrix = translate(glm::mat4(1.0f), positions[i]);
 			glm::mat4 ModelMatrix = TranslationMatrix * RotationMatrix;
 
 			glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;

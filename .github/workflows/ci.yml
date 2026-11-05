@@ -1,0 +1,169 @@
+name: ci
+
+# Build-only check: every master push (and PR) must configure and compile on
+# all three supported platforms. The tutorials are interactive OpenGL programs,
+# so nothing is executed here: a headless runner has no display and no GPU.
+# .github/scripts/package.py proves the build (every executable produced) and
+# turns it into an artifact that can be tested on a real machine afterwards.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # windows-latest is the Windows Server 2025 VS2026 image, which ships only
+      # Visual Studio 2026; windows-2022/windows-2025 carry 2022. Resolve the
+      # installed one instead of hard-coding a version that may not exist.
+      - name: Resolve Visual Studio generator
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $tools = 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'
+          $installPath = & $vswhere -latest -products * -requires $tools -property installationPath
+          if (-not $installPath) { throw "No Visual Studio with the VC++ x64 toolset found" }
+          $vsVersion = & $vswhere -latest -products * -requires $tools -property installationVersion
+          $major = [int]($vsVersion.Split('.')[0])
+          $generator = @{ 16 = 'Visual Studio 16 2019'; 17 = 'Visual Studio 17 2022'; 18 = 'Visual Studio 18 2026' }[$major]
+          if (-not $generator) { throw "Unsupported Visual Studio major version $major ($vsVersion)" }
+          $cmakeVersion = ((cmake --version | Select-Object -First 1) -replace '^cmake version ','')
+          Write-Host "Visual Studio $vsVersion at $installPath -> -G $generator (CMake $cmakeVersion)"
+          if ($major -ge 18 -and ([version]$cmakeVersion -lt [version]'4.1')) {
+            throw "Visual Studio 18 2026 needs CMake >= 4.1, found $cmakeVersion"
+          }
+          "VS_GENERATOR=$generator" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # No preinstalled OpenGL libraries are needed: gdm downloads and builds
+      # GLFW/GLEW/GLM/GLAD/Assimp from source, and everything static.
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
+      - name: Configure
+        run: cmake -S . -B build -G "$env:VS_GENERATOR" -A x64
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 4
+
+      # Fails the job if any target did not link; then zips every exe with the
+      # assets it loads at runtime.
+      - name: Verify and package
+        run: python .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}"
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-windows-${{ github.sha }}
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest # Apple Silicon
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # Xcode's OpenGL.framework and the command line tools cover the system
+      # interfaces; every third-party library still comes from gdm.
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
+      - name: Configure
+        run: cmake -S . -B build -G Xcode
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 3
+
+      - name: Verify and package
+        run: python3 .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}"
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-macos-${{ github.sha }}
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # The only system packages the build needs: GL/GLU headers (the top level
+      # links -lGL -lGLU) and the X11 headers GLFW 3.4 compiles its X11 and
+      # Wayland backends against. libwayland/libxkbcommon only exist because
+      # GLFW builds Wayland support by default; -DGLFW_BUILD_WAYLAND=OFF in the
+      # configure step drops them. patchelf is for the packaging step, which
+      # repoints any shared dependency it has to bundle at $ORIGIN.
+      - name: Install system OpenGL/X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev \
+            libwayland-dev libxkbcommon-dev \
+            patchelf
+
+      # GDM_BUILD_EXAMPLES builds gdm's example; package.py stages it at the root
+      # of the artifact, and both smoke tests run it (see the README.txt the
+      # packaging step writes). OFF by default: GDM is only a dependency.
+      - name: Configure
+        run: cmake -S . -B build -G "Unix Makefiles"
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo --parallel 4
+
+      - name: Verify and package
+        run: python3 .github/scripts/package.py --config RelWithDebInfo
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}"
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ogl-gdm-linux-${{ github.sha }}
+          # upload-artifact always zips what it is handed, so hand it the
+          # unpacked payload: the download then expands straight into the
+          # tutorial folders instead of into another archive.
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}
+          if-no-files-found: error

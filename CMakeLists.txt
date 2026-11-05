@@ -23,6 +23,20 @@ endif()
 # Compile external dependencies 
 add_subdirectory (external)
 
+# Suppress the by-design -Wcast-function-type warnings emitted while compiling the
+# fetched glew-cmake sources: GLEW casts generic GL function pointers obtained from
+# wglGetProcAddress/glXGetProcAddress (PROC/FARPROC) to each extension's typed
+# function pointer. That is the standard GL-loader pattern and safe on the supported
+# platforms, but GCC flags it because the types are not source-level "compatible".
+# Compiler-gated: GCC spells it -Wcast-function-type; Clang uses the stricter
+# -Wcast-function-type-strict; MSVC has no equivalent warning (and does not accept
+# -W flags), so nothing is added for it.
+if(TARGET libglew_static)
+    target_compile_options(libglew_static PRIVATE
+        $<$<C_COMPILER_ID:GNU>:-Wno-cast-function-type>
+        $<$<OR:$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:AppleClang>>:-Wno-cast-function-type-strict>)
+endif()
+
 # On Visual 2005 and above, this module can set the debug working directory
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/rpavlik-cmake-modules-76c1eb4")
 include(CreateLaunchers)
@@ -35,7 +49,6 @@ endif(INCLUDE_DISTRIB)
 
 include_directories(
 	external/AntTweakBar-1.16/include/
-	external/assimp-3.0.1270/include/
 	external/bullet-2.81-rev2613/src/
 	.
 )
@@ -54,6 +67,9 @@ add_definitions(
 	-DTW_NO_DIRECT3D
 	-DGLEW_STATIC
 	-D_CRT_SECURE_NO_WARNINGS
+	# GLM_FORCE_CTOR_INIT: restores the pre-GLM-1.0 semantics these tutorials were written against.
+	# With this flag GLM's default ctor initializes them again: mat* -> identity, quat -> identity (0,0,0,1), vec* -> zeros.
+	-DGLM_FORCE_CTOR_INIT
 )
 
 # Tutorial 1
@@ -495,6 +511,7 @@ add_executable(tutorial17_rotations
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	common/quaternion_utils.cpp
@@ -545,6 +562,7 @@ add_executable(misc05_picking_slow_easy
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -572,6 +590,7 @@ add_executable(misc05_picking_custom
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -597,6 +616,7 @@ add_executable(misc05_picking_BulletPhysics
 	common/texture.hpp
 	common/objloader.cpp
 	common/objloader.hpp
+	common/glfw_anttweakbar.hpp
 	common/vboindexer.cpp
 	common/vboindexer.hpp
 	
@@ -614,11 +634,6 @@ target_link_libraries(misc05_picking_BulletPhysics
 set_target_properties(misc05_picking_BulletPhysics PROPERTIES XCODE_ATTRIBUTE_CONFIGURATION_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/misc05_picking/")
 create_target_launcher(misc05_picking_BulletPhysics WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/misc05_picking/")
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	set_target_properties(tutorial17_rotations misc05_picking_slow_easy misc05_picking_custom misc05_picking_BulletPhysics
-		PROPERTIES EXCLUDE_FROM_ALL 1 EXCLUDE_FROM_DEFAULT_BUILD 1)
-else()
-endif()
 
 
 add_executable(tutorial18_billboards

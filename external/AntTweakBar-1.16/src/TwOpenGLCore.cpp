@@ -161,6 +161,16 @@ int CTwGraphOpenGLCore::Init()
     m_Drawing = false;
     m_FontTexID = 0;
     m_FontTex = NULL;
+    // Zero-initialize every GL handle so Shut() is safe if Init() bails out
+    // part-way through (TwInit calls TwTerminate on failure, which calls Shut).
+    m_LineRectVS = 0;  m_LineRectFS = 0;  m_LineRectProgram = 0;
+    m_LineRectVArray = 0;  m_LineRectVertices = 0;  m_LineRectColors = 0;
+    m_TriVS = 0;  m_TriFS = 0;  m_TriProgram = 0;
+    m_TriUniVS = 0;  m_TriUniFS = 0;  m_TriUniProgram = 0;
+    m_TriTexVS = 0;  m_TriTexFS = 0;  m_TriTexProgram = 0;
+    m_TriTexUniVS = 0;  m_TriTexUniFS = 0;  m_TriTexUniProgram = 0;
+    m_TriVArray = 0;  m_TriVertices = 0;  m_TriUVs = 0;  m_TriColors = 0;
+    m_TriBufferSize = 0;
 
     if( LoadOpenGLCore()==0 )
     {
@@ -178,7 +188,7 @@ int CTwGraphOpenGLCore::Init()
     };
     m_LineRectVS = _glCreateShader(GL_VERTEX_SHADER);
     _glShaderSource(m_LineRectVS, 1, lineRectVS, NULL);
-    CompileShader(m_LineRectVS);
+    m_LineRectVS = CompileShader(m_LineRectVS);
 
     const GLchar *lineRectFS[] = {
         "#version 150 core\n"
@@ -189,14 +199,14 @@ int CTwGraphOpenGLCore::Init()
     };
     m_LineRectFS = _glCreateShader(GL_FRAGMENT_SHADER);
     _glShaderSource(m_LineRectFS, 1, lineRectFS, NULL);
-    CompileShader(m_LineRectFS);
+    m_LineRectFS = CompileShader(m_LineRectFS);
 
     m_LineRectProgram = _glCreateProgram();
     _glAttachShader(m_LineRectProgram, m_LineRectVS);
     _glAttachShader(m_LineRectProgram, m_LineRectFS);
     _glBindAttribLocation(m_LineRectProgram, 0, "vertex");
     _glBindAttribLocation(m_LineRectProgram, 1, "color");
-    LinkProgram(m_LineRectProgram);
+    m_LineRectProgram = LinkProgram(m_LineRectProgram);
 
     // Create line/rect vertex buffer
     const GLfloat lineRectInitVertices[] = { 0,0,0, 0,0,0, 0,0,0, 0,0,0 };
@@ -222,7 +232,7 @@ int CTwGraphOpenGLCore::Init()
     };
     m_TriVS = _glCreateShader(GL_VERTEX_SHADER);
     _glShaderSource(m_TriVS, 1, triVS, NULL);
-    CompileShader(m_TriVS);
+    m_TriVS = CompileShader(m_TriVS);
 
     const GLchar *triUniVS[] = {
         "#version 150 core\n"
@@ -235,7 +245,7 @@ int CTwGraphOpenGLCore::Init()
     };
     m_TriUniVS = _glCreateShader(GL_VERTEX_SHADER);
     _glShaderSource(m_TriUniVS, 1, triUniVS, NULL);
-    CompileShader(m_TriUniVS);
+    m_TriUniVS = CompileShader(m_TriUniVS);
 
     m_TriFS = m_TriUniFS = m_LineRectFS;
 
@@ -244,7 +254,7 @@ int CTwGraphOpenGLCore::Init()
     _glAttachShader(m_TriProgram, m_TriFS);
     _glBindAttribLocation(m_TriProgram, 0, "vertex");
     _glBindAttribLocation(m_TriProgram, 1, "color");
-    LinkProgram(m_TriProgram);
+    m_TriProgram = LinkProgram(m_TriProgram);
     m_TriLocationOffset = _glGetUniformLocation(m_TriProgram, "offset");
     m_TriLocationWndSize = _glGetUniformLocation(m_TriProgram, "wndSize");
 
@@ -253,7 +263,7 @@ int CTwGraphOpenGLCore::Init()
     _glAttachShader(m_TriUniProgram, m_TriUniFS);
     _glBindAttribLocation(m_TriUniProgram, 0, "vertex");
     _glBindAttribLocation(m_TriUniProgram, 1, "color");
-    LinkProgram(m_TriUniProgram);
+    m_TriUniProgram = LinkProgram(m_TriUniProgram);
     m_TriUniLocationOffset = _glGetUniformLocation(m_TriUniProgram, "offset");
     m_TriUniLocationWndSize = _glGetUniformLocation(m_TriUniProgram, "wndSize");
     m_TriUniLocationColor = _glGetUniformLocation(m_TriUniProgram, "color");
@@ -265,17 +275,13 @@ int CTwGraphOpenGLCore::Init()
         "in vec2 fuv;"
         "in vec4 fcolor;"
         "out vec4 outColor;"
-// texture2D is deprecated and replaced by texture with GLSL 3.30 but it seems 
-// that on Mac Lion backward compatibility is not ensured.
-#if defined(ANT_OSX) && (MAC_OS_X_VERSION_MAX_ALLOWED >= 1070)
+        // GLSL 150 core removed texture2D(); texture() is the core replacement
+        // and works on every driver that can create a 3.2+ core context.
         "void main() { outColor.rgb = fcolor.bgr; outColor.a = fcolor.a * texture(tex, fuv).r; }"
-#else
-        "void main() { outColor.rgb = fcolor.bgr; outColor.a = fcolor.a * texture2D(tex, fuv).r; }"
-#endif
     };
     m_TriTexFS = _glCreateShader(GL_FRAGMENT_SHADER);
     _glShaderSource(m_TriTexFS, 1, triTexFS, NULL);
-    CompileShader(m_TriTexFS);
+    m_TriTexFS = CompileShader(m_TriTexFS);
 
     const GLchar *triTexVS[] = {
         "#version 150 core\n"
@@ -290,7 +296,7 @@ int CTwGraphOpenGLCore::Init()
     };
     m_TriTexVS = _glCreateShader(GL_VERTEX_SHADER);
     _glShaderSource(m_TriTexVS, 1, triTexVS, NULL);
-    CompileShader(m_TriTexVS);
+    m_TriTexVS = CompileShader(m_TriTexVS);
 
     const GLchar *triTexUniVS[] = {
         "#version 150 core\n"
@@ -305,7 +311,7 @@ int CTwGraphOpenGLCore::Init()
     };
     m_TriTexUniVS = _glCreateShader(GL_VERTEX_SHADER);
     _glShaderSource(m_TriTexUniVS, 1, triTexUniVS, NULL);
-    CompileShader(m_TriTexUniVS);
+    m_TriTexUniVS = CompileShader(m_TriTexUniVS);
 
     m_TriTexUniFS = m_TriTexFS;
 
@@ -315,7 +321,7 @@ int CTwGraphOpenGLCore::Init()
     _glBindAttribLocation(m_TriTexProgram, 0, "vertex");
     _glBindAttribLocation(m_TriTexProgram, 1, "uv");
     _glBindAttribLocation(m_TriTexProgram, 2, "color");
-    LinkProgram(m_TriTexProgram);
+    m_TriTexProgram = LinkProgram(m_TriTexProgram);
     m_TriTexLocationOffset = _glGetUniformLocation(m_TriTexProgram, "offset");
     m_TriTexLocationWndSize = _glGetUniformLocation(m_TriTexProgram, "wndSize");
     m_TriTexLocationTexture = _glGetUniformLocation(m_TriTexProgram, "tex");
@@ -326,11 +332,18 @@ int CTwGraphOpenGLCore::Init()
     _glBindAttribLocation(m_TriTexUniProgram, 0, "vertex");
     _glBindAttribLocation(m_TriTexUniProgram, 1, "uv");
     _glBindAttribLocation(m_TriTexUniProgram, 2, "color");
-    LinkProgram(m_TriTexUniProgram);
+    m_TriTexUniProgram = LinkProgram(m_TriTexUniProgram);
     m_TriTexUniLocationOffset = _glGetUniformLocation(m_TriTexUniProgram, "offset");
     m_TriTexUniLocationWndSize = _glGetUniformLocation(m_TriTexUniProgram, "wndSize");
     m_TriTexUniLocationColor = _glGetUniformLocation(m_TriTexUniProgram, "color");
     m_TriTexUniLocationTexture = _glGetUniformLocation(m_TriTexUniProgram, "tex");
+
+    // Fail if any shader or program failed to compile or link; the reason was
+    // already printed to stderr by CompileShader/LinkProgram.
+    if( m_LineRectVS==0 || m_LineRectFS==0 || m_LineRectProgram==0
+        || m_TriVS==0 || m_TriUniVS==0 || m_TriTexVS==0 || m_TriTexUniVS==0 || m_TriTexFS==0
+        || m_TriProgram==0 || m_TriUniProgram==0 || m_TriTexProgram==0 || m_TriTexUniProgram==0 )
+        return 0;
 
     // Create tri vertex buffer
     _glGenVertexArrays(1, &m_TriVArray);
@@ -348,6 +361,13 @@ int CTwGraphOpenGLCore::Init()
 int CTwGraphOpenGLCore::Shut()
 {
     assert(m_Drawing==false);
+
+    // If Init() failed before LoadOpenGLCore() resolved the dynamically-loaded
+    // VAO entry points, no GL object was created and the _gl pointers may be
+    // NULL: skip cleanup instead of calling through a null pointer (this is
+    // the crash path taken by TwInit -> TwTerminate when the loader fails).
+    if( _glGenVertexArrays==NULL )
+        return 1;
 
     UnbindFont(m_FontTexID);
 

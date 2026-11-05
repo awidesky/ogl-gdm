@@ -494,20 +494,19 @@ namespace GL { PFNGLGetProcAddress _glGetProcAddress = NULL; }
     #include <dlfcn.h>
 
     static void *gl_dyld = NULL;
-    static const char *gl_prefix = "_";
     void *NSGLGetProcAddressNew(const GLubyte *name) 
     {
-        void *proc=NULL;
-        if (gl_dyld == NULL) 
+        void *proc = NULL;
+        if (gl_dyld == NULL)
         {
-            gl_dyld = dlopen("OpenGL",RTLD_LAZY);
+            // Legacy Mac OS X (< 10.8) resolved the bare framework name through
+            // dyld's search paths; modern dyld requires the full framework path.
+            gl_dyld = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_LAZY | RTLD_LOCAL);
+            if (gl_dyld == NULL)
+                gl_dyld = dlopen("OpenGL.framework/OpenGL", RTLD_LAZY | RTLD_LOCAL);
         }
-        if (gl_dyld) 
-        {
-            NSString *sym = [[NSString alloc] initWithFormat: @"%s%s",gl_prefix,name];
-            proc = dlsym(gl_dyld,[sym UTF8String]);
-            [sym release];
-        }
+        if (gl_dyld)
+            proc = dlsym(gl_dyld, (const char *)name); // dlsym adds the C symbol prefix itself
         return proc;
     }
 
@@ -515,19 +514,7 @@ namespace GL { PFNGLGetProcAddress _glGetProcAddress = NULL; }
     {
         _glGetProcAddress = reinterpret_cast<GL::PFNGLGetProcAddress>(NSGLGetProcAddressNew);
 		
-		// try to load a symbol
-		if (_glGetProcAddress("glBindBufferARB") == NULL)
-		{
-			// remove the symbols underscore prefix (OSX 10.7 and later)
-			gl_prefix = "";
-			if (_glGetProcAddress("glBindBufferARB") == NULL)
-			{
-				// fail: fall back to underscore 
-		        gl_prefix = "_";
-			}
-		}		
-		
-		return 1;
+        return 1;
     }
 
     int UnloadOpenGL() 
@@ -539,7 +526,7 @@ namespace GL { PFNGLGetProcAddress _glGetProcAddress = NULL; }
        }
        return 1;
    }    
-   
+    
 #endif // defined(ANT_UNIX)
 
 //  ---------------------------------------------------------------------------

@@ -9,8 +9,11 @@ using namespace glm;
 
 #include "controls.hpp"
 
-glm::mat4 ViewMatrix;
-glm::mat4 ProjectionMatrix;
+// Explicit identity initialization: since GLM 1.0 a default-constructed
+// glm::mat4 is zeroed (or left uninitialized), not the identity like in the
+// GLM 0.9.x these tutorials were written against.
+glm::mat4 ViewMatrix(1.0f);
+glm::mat4 ProjectionMatrix(1.0f);
 
 glm::mat4 getViewMatrix(){
 	return ViewMatrix;

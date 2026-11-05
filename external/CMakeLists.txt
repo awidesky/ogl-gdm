@@ -23,19 +23,21 @@ set(GDM_USE_GLUTIL ON CACHE BOOL "")
 set(GDM_GLFW_VERSION "3.4.0" CACHE STRING "GLFW version")
 set(GDM_GLEW_VERSION "2.3.1" CACHE STRING "GLEW version")
 set(GDM_GLM_VERSION "1.0.3" CACHE STRING "GLM version")
+set(GDM_CPPTRACE_VERSION "1.0.4" CACHE STRING "cpptrace version")
+set(AGL_LIBRARY "" CACHE FILEPATH "Disable AGL, deprecated Apple graphics framework." FORCE)
 
-# TODO : use file(DOWNLOAD)
-include(FetchContent)
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
-FetchContent_Declare(
-	gdm
-	GIT_REPOSITORY https://github.com/awidesky/gdm.git
-	GIT_TAG        master
-	GIT_SHALLOW    TRUE
-	SOURCE_DIR     ${CMAKE_SOURCE_DIR}/external/gdm
-	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-FetchContent_MakeAvailable(gdm)
+### GDM ###
+# external/gdm is not a git checkout: FetchGDM() (FetchGDM.cmake) keeps a
+# copy of the gdm sources here, tracking the head commit of GDM_TAG; see the
+# header comment there for the resolve/download/verify/install pipeline.
+set(GDM_SRC_DIR "${CMAKE_SOURCE_DIR}/external/gdm")
+set(GDM_TAG "master" CACHE STRING "GDM's version; branch, tag, or commit hash")
+include("${CMAKE_CURRENT_LIST_DIR}/FetchGDM.cmake")
+FetchGDM("${GDM_SRC_DIR}" "${GDM_TAG}")
+
+# gdm always lives at ${GDM_SRC_DIR} (a subdirectory of this source tree), so
+# the one-arg form is valid; binary dir defaults to <build>/external/gdm.
+add_subdirectory("${GDM_SRC_DIR}")
 set(OPENGL_LIBRARY
 	${OPENGL_LIBRARY}
 	gdm::window # original script only add glfw, I don't know if ANTTWEAKBAR really need it, but..
@@ -100,6 +102,10 @@ include_directories(
 )
 add_definitions(
 	-D_MACOSX
+	# Apple deprecates OpenGL, but AntTweakBar's GL entry-point loader, which must reference
+	# the deprecated functions by name still use it: hundreds of -Wdeprecated-declarations per build.
+	# Apple's sanctioned way to silence this is this macro, which only affects the OpenGL headers.
+	-DGL_SILENCE_DEPRECATION
 )
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 add_definitions(
@@ -142,29 +148,41 @@ target_link_libraries(ANTTWEAKBAR_116_OGLCORE_GLFW
 	${OPENGL_LIBRARY}
 	${EXTRA_LIBS}
 )
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	# TwMgr.mm uses AppKit (NSCursor, NSImage, NSPasteboard) and the ObjC runtime.
+	# Without these the final link fails with undefined _OBJC_CLASS_$_NS* / _objc_msgSend symbols.
+	target_link_libraries(ANTTWEAKBAR_116_OGLCORE_GLFW
+		"-framework AppKit"
+		"-framework Foundation"
+	)
+endif()
 target_compile_options(ANTTWEAKBAR_116_OGLCORE_GLFW PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
 
 ### ASSIMP ###
-# AssImp already has a CMakeLists.txt so let's use these
-
-# Compile built-in, modified version of Zlib
-include(CheckIncludeFile)
-include(CheckTypeSize)
-include(CheckFunctionExists)
-add_subdirectory( assimp-3.0.1270/contrib/zlib )
-
-# Compile without Boost
-include_directories( assimp-3.0.1270/code/BoostWorkaround )
-add_definitions( -DASSIMP_BUILD_BOOST_WORKAROUND )
-
-# Compile AssImp
-set( LIB_INSTALL_DIR "lib")
-set(LIBASSIMP_COMPONENT libassimp3.0-r1270-OGLtuts)
-set(ZLIB_LIBRARIES zlib)
-set(BUILD_STATIC_LIB ON)
-#set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/zlib)
-add_subdirectory( assimp-3.0.1270/code )
-target_compile_options(assimp PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/source-charset:windows-1252>")
+# Vendored, trimmed AssImp 6.0.5 (the OBJ importer + only the dependencies it needs).
+# AssImp 6 dropped BUILD_STATIC_LIB; its only selector is BUILD_SHARED_LIBS, which
+# defaults ON. Plain (non-cache) variables are scoped to this subtree and unset below.
+set(BUILD_SHARED_LIBS OFF)
+set(ASSIMP_BUILD_TESTS OFF)                    # default ON in 6.x
+set(ASSIMP_INSTALL OFF)                        # default ON in 6.x
+set(ASSIMP_NO_EXPORT ON)                       # import-only: also drops the export framework
+set(ASSIMP_WARNINGS_AS_ERRORS OFF)             # default ON; -Werror would break on a new compiler
+# zlib: assimp always links one; keep its platform default (bundled on Windows,
+# system zlib on macOS/Linux). The bundled 1.2.13 does not compile with recent
+# macOS SDKs (zutil.h's fdopen macro clashes with <stdio.h>).
+set(ASSIMP_BUILD_DRACO OFF)
+set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF) # core + only the importer this repo uses
+set(ASSIMP_BUILD_OBJ_IMPORTER ON)
+# assimp's own FindZLIB/unzip probes consult pkg-config; skip the probe to avoid
+# its benign "Could NOT find PkgConfig" noise.
+set(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig ON)
+add_subdirectory( assimp-6.0.5 )
+# AssImp 6's headers need C++17 (defs.h declares inline constexpr ai_epsilon;
+if(TARGET assimp)
+	set_target_properties(assimp PROPERTIES INTERFACE_COMPILE_FEATURES "cxx_std_17")
+endif()
+unset(CMAKE_DISABLE_FIND_PACKAGE_PkgConfig)
+unset(BUILD_SHARED_LIBS)
 
 ### BULLET ###
 # Bullet already has a CMakeLists.txt so let's use these
