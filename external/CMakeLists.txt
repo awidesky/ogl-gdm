@@ -24,6 +24,8 @@ set(GDM_GLFW_VERSION "3.4.0" CACHE STRING "GLFW version")
 set(GDM_GLEW_VERSION "2.3.1" CACHE STRING "GLEW version")
 set(GDM_GLM_VERSION "1.0.3" CACHE STRING "GLM version")
 set(GDM_CPPTRACE_VERSION "1.0.4" CACHE STRING "cpptrace version")
+set(GDM_GLFW_STATIC ON CACHE BOOL "Build GLFW static (no glfw3.dll/dylib at runtime)")
+set(GDM_GLEW_STATIC ON CACHE BOOL "Build GLEW static (no glew dll/dylib at runtime)")
 set(AGL_LIBRARY "" CACHE FILEPATH "Disable AGL, deprecated Apple graphics framework." FORCE)
 
 ### GDM ###
