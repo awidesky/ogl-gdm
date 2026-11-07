@@ -24,6 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # github.sha is the full 40-character hash; the artifact name and
+      # its payload directory use the 7 characters for readability
+      - name: Short commit hash
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -64,18 +71,18 @@ jobs:
       # assets it loads at runtime.
       - name: Verify and package
         run: python .github/scripts/package.py --config RelWithDebInfo
-              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}"
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ steps.sha.outputs.short }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ogl-gdm-windows-${{ github.sha }}
+          name: ogl-gdm-windows-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
           # unpacked payload: the download then expands straight into the
           # tutorial folders instead of into another archive.
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ steps.sha.outputs.short }}
           if-no-files-found: error
 
   build-macos:
@@ -83,6 +90,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      # github.sha is the full 40-character hash; the artifact name and
+      # its payload directory use the 7 characters `git log --oneline`
+      # shows, matching the zip name package.py writes.
+      - name: Short commit hash
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -102,18 +117,18 @@ jobs:
 
       - name: Verify and package
         run: python3 .github/scripts/package.py --config RelWithDebInfo
-              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}"
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ steps.sha.outputs.short }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ogl-gdm-macos-${{ github.sha }}
+          name: ogl-gdm-macos-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
           # unpacked payload: the download then expands straight into the
           # tutorial folders instead of into another archive.
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ steps.sha.outputs.short }}
           if-no-files-found: error
 
   build-linux:
@@ -121,6 +136,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      # github.sha is the full 40-character hash; the artifact name and
+      # its payload directory use the 7 characters `git log --oneline`
+      # shows, matching the zip name package.py writes.
+      - name: Short commit hash
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
         with:
@@ -154,16 +177,16 @@ jobs:
 
       - name: Verify and package
         run: python3 .github/scripts/package.py --config RelWithDebInfo
-              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}"
+              --payload-dir "${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ steps.sha.outputs.short }}"
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ogl-gdm-linux-${{ github.sha }}
+          name: ogl-gdm-linux-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
           # unpacked payload: the download then expands straight into the
           # tutorial folders instead of into another archive.
-          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ steps.sha.outputs.short }}
           if-no-files-found: error
