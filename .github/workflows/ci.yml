@@ -5,6 +5,8 @@ name: ci
 # so nothing is executed here: a headless runner has no display and no GPU.
 # .github/scripts/package.py proves the build (every executable produced) and
 # turns it into an artifact that can be tested on a real machine afterwards.
+# That script is stdlib-only and runs on the Python 3 each runner image already
+# provides, so there is no setup-python step to install or pin one.
 
 on:
   push:
@@ -12,6 +14,10 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+
+# The jobs only read the repository. Artifact upload does not use GITHUB_TOKEN
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,7 +28,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # github.sha is the full 40-character hash; the artifact name and
       # its payload directory use the 7 characters for readability
@@ -30,10 +36,6 @@ jobs:
         id: sha
         shell: bash
         run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
 
       # windows-latest is the Windows Server 2025 VS2026 image, which ships only
       # Visual Studio 2026; windows-2022/windows-2025 carry 2022. Resolve the
@@ -76,7 +78,7 @@ jobs:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ogl-gdm-windows-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
@@ -84,12 +86,13 @@ jobs:
           # tutorial folders instead of into another archive.
           path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-windows-${{ steps.sha.outputs.short }}
           if-no-files-found: error
+          retention-days: 14
 
   build-macos:
     runs-on: macos-latest # Apple Silicon
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # github.sha is the full 40-character hash; the artifact name and
       # its payload directory use the 7 characters `git log --oneline`
@@ -98,10 +101,6 @@ jobs:
         id: sha
         shell: bash
         run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
 
       # Xcode's OpenGL.framework and the command line tools cover the system
       # interfaces; every third-party library still comes from gdm.
@@ -122,7 +121,7 @@ jobs:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ogl-gdm-macos-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
@@ -130,12 +129,13 @@ jobs:
           # tutorial folders instead of into another archive.
           path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-macos-${{ steps.sha.outputs.short }}
           if-no-files-found: error
+          retention-days: 14
 
   build-linux:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # github.sha is the full 40-character hash; the artifact name and
       # its payload directory use the 7 characters `git log --oneline`
@@ -144,10 +144,6 @@ jobs:
         id: sha
         shell: bash
         run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
 
       # The only system packages the build needs: GL/GLU headers (the top level
       # links -lGL -lGLU) and the X11 headers GLFW 3.4 compiles its X11 and
@@ -182,7 +178,7 @@ jobs:
           ARTIFACT_DIR: ${{ runner.temp }}/ogl-gdm-artifacts
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ogl-gdm-linux-${{ steps.sha.outputs.short }}
           # upload-artifact always zips what it is handed, so hand it the
@@ -190,3 +186,4 @@ jobs:
           # tutorial folders instead of into another archive.
           path: ${{ runner.temp }}/ogl-gdm-artifacts/payload/ogl-gdm-linux-${{ steps.sha.outputs.short }}
           if-no-files-found: error
+          retention-days: 14
