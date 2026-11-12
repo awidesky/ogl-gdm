@@ -54,7 +54,17 @@ include_directories(
 )
 
 
+# gdm's glew-glad bridge keeps an undefined glutil::debug::init() while
+# GDM_HAS_GLUTIL and GDM_DEBUG are both on, and the bridge object is pulled in
+# only when a tutorial calls glewInit() - by then the linker has already passed
+# libglutil.a, which GNU ld never revisits. Ask those linkers to rescan the
+# group (ld64/MSVC resolve either way; the marker is a no-op for them).
+if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
+	set(ALL_LIBS_GROUP "$<LINK_GROUP:RESCAN>")
+endif()
+
 set(ALL_LIBS
+	${ALL_LIBS_GROUP}
 	${OPENGL_LIBRARY}
 	gdm::deps
 	gdm::glutil
