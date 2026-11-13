@@ -546,6 +546,30 @@ def bundle_libs(binary, lib_dir):
     return sorted(set(bundled.values()))
 
 
+def describe_payload(stage_root: Path) -> str:
+    """What the payload is made of, biggest category first: a surprising
+    artifact size should be explainable from the log alone."""
+    buckets = {"executables": 0, "debug symbols": 0, "libraries": 0, "assets": 0}
+    for path in stage_root.rglob("*"):
+        if not path.is_file():
+            continue
+        size = path.stat().st_size
+        rel = path.relative_to(stage_root).as_posix()
+        if rel.endswith(".pdb"):
+            buckets["debug symbols"] += size
+        elif rel.startswith(LIB_DIR_NAME + "/"):
+            buckets["libraries"] += size
+        elif is_executable_file(path):
+            buckets["executables"] += size
+        else:
+            buckets["assets"] += size
+    total = sum(buckets.values())
+    parts = [f"{name} {human_size(size)}"
+             for name, size in sorted(buckets.items(), key=lambda kv: -kv[1])
+             if size]
+    return f"{human_size(total)}: " + ", ".join(parts)
+
+
 def stage_target(name, source_dir, exe_path, build_dir, config, stage_root,
                  repo_root, extra_dlls, lib_dir, exe_names, dest_dir=None):
     """dest_dir: stage the exe directly there, with no sources copied - for
@@ -873,6 +897,7 @@ def main(argv=None):
         print(f"\npackaged {len(found)} executables, "
               f"{bundled_total} non-system librar(ies), {len(dlls)} dll(s) "
               f"-> {zip_path} ({human_size(zip_path.stat().st_size)})")
+        print("payload " + describe_payload(stage_root))
         if keep_staging:
             print(f"payload tree kept at {stage_root}")
     finally:
