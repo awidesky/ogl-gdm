@@ -54,21 +54,11 @@ include_directories(
 )
 
 
-# gdm's glew-glad bridge keeps an undefined glutil::debug::init() while
-
 set(ALL_LIBS
 	${OPENGL_LIBRARY}
 	gdm::deps
 	gdm::glutil
 )
-# GDM_HAS_GLUTIL and GDM_DEBUG are both on, and every tutorial calls glewInit(),
-# which pulls the bridge object in only after the linker has
-# already passed libglutil.a - GNU ld never revisits it.
-if((CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
-	AND TARGET gdm_glew_glad AND TARGET glutil)
-	list(APPEND ALL_LIBS
-		"$<LINK_GROUP:RESCAN,$<TARGET_FILE:gdm_glew_glad>,$<TARGET_FILE:glutil>>")
-endif()
 
 
 add_definitions(
