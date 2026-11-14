@@ -790,12 +790,19 @@ add_custom_command(
 
 elseif (${CMAKE_GENERATOR} MATCHES "Xcode" )
 
-# maybe current MacOS version is lower than Xcode default deployment target version,
-# which is always the latest MacOS version.
+# Xcode defaults to the SDK version. Lower that to this Mac only when the Mac
+# is older than its SDK; asking for newer than the SDK supports warns on every target.
 execute_process(COMMAND /usr/bin/sw_vers -productVersion
-    OUTPUT_VARIABLE MACOS_PRODUCT_VERSION
+    OUTPUT_VARIABLE MACOS_HOST_VERSION
     OUTPUT_STRIP_TRAILING_WHITESPACE)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "${MACOS_PRODUCT_VERSION}")
+execute_process(COMMAND /usr/bin/xcrun --sdk macosx --show-sdk-version
+    OUTPUT_VARIABLE MACOS_SDK_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if (MACOS_SDK_VERSION AND MACOS_HOST_VERSION VERSION_LESS MACOS_SDK_VERSION)
+	message(STATUS "Xcode deployment target lowered to : ${MACOS_HOST_VERSION} (SDK is ${MACOS_SDK_VERSION})")
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "${MACOS_HOST_VERSION}")
+endif()
 
 endif (NOT ${CMAKE_GENERATOR} MATCHES "Xcode" )
 
