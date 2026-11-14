@@ -56,8 +56,7 @@ include_directories(
 
 set(ALL_LIBS
 	${OPENGL_LIBRARY}
-	gdm::deps
-	gdm::glutil
+	gdm::gdm
 )
 
 
