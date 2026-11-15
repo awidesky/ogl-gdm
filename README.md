@@ -6,6 +6,9 @@ The previous fork, [ogl-macfix](https://github.com/awidesky/ogl-macFix), was a s
 `ogl-gdm` uses [GDM](https://github.com/awidesky/gdm) to install dependencies, so it uses up-to-date OpenGL dependencies on all platforms and builds with recent CMake.  
 It also uses the [GLUtil](https://github.com/awidesky/gdm#glutil---opengl-utility-library) library to show extra debug information when an OpenGL error occurs.
 
+With `-G Xcode` on macOS, configuring takes a few extra minutes: under that generator every CMake check runs `xcodebuild`, and cpptrace's are the bulk of them.  
+Running `brew install cpptrace` would make GDM use the installed one, so initial configuration time will reduce.
+
 Note that Assimp, Bullet, and AntTweakBar are still bundled, since they're not supported by `GDM`.
 AntTweakBar is no longer maintained and causes build problems on macOS (on Windows it builds successfully but does not work correctly at runtime). The samples that depend on it are `tutorial17_rotations`, `misc05_picking_slow_easy`, `misc05_picking_custom`, and `misc05_picking_BulletPhysics`, and those targets are excluded from ALL_BUILD on macOS.
   
