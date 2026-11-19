@@ -30,7 +30,8 @@
 
     "running scripts is disabled on this system" (PSSecurityException): the
     execution policy is checked before this file is read, so nothing in here can
-    prevent it. Allow it for one run only - no permanent change - with either:
+    prevent it. Run smoke-test.cmd next to this file (it does the bypass for you),
+    or allow it for one run only - no permanent change - with either:
         powershell -NoProfile -ExecutionPolicy Bypass -File .\smoke-test.ps1
     or, in an already open PowerShell, for that window only:
         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
