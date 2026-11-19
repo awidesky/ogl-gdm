@@ -28,6 +28,13 @@
 
     At the end it waits for Enter, so the output does not vanish with the window.
 
+    "running scripts is disabled on this system" (PSSecurityException): the
+    execution policy is checked before this file is read, so nothing in here can
+    prevent it. Allow it for one run only - no permanent change - with either:
+        powershell -NoProfile -ExecutionPolicy Bypass -File .\smoke-test.ps1
+    or, in an already open PowerShell, for that window only:
+        Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
 .PARAMETER LogFile
     Positional. Write everything - this script's messages and the executables'
     own output - to this file instead of the console (no "Press Enter" pause).

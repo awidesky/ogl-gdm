@@ -157,6 +157,14 @@ output does not disappear with the window:
     macOS / Linux:  ./smoke-test.sh
     Windows:        .\\smoke-test.ps1
 
+If Windows says it cannot run scripts on this system (the execution policy),
+allow it for this one run only - nothing is changed permanently:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\\smoke-test.ps1
+
+Add a file name after the script name to write all output to that file instead
+of the console, e.g. .\\smoke-test.ps1 log.txt
+
 Every executable runs, all of them, including the two or three that share a
 source folder (misc05_picking alone covers picking by three different
 techniques). Output appears in the console in both modes. If nobody is watching,
