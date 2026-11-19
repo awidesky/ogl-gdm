@@ -64,7 +64,7 @@ jobs:
       # packaging step writes). OFF by default: GDM is only a dependency.
       - name: Configure
         run: cmake -S . -B build -G "$env:VS_GENERATOR" -A x64
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_DISTRIB=true -DGDM_BUILD_EXAMPLES=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
       - name: Build
         run: cmake --build build --config RelWithDebInfo --parallel 4
